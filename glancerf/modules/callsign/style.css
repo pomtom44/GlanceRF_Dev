@@ -1,0 +1,39 @@
+/* Avoid position here — same class is on .glancerf-cell-slot in stacks; .grid-cell is position:relative */
+.grid-cell-callsign .callsign_display {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.2em;
+    text-align: center;
+    font-size: 4vmin;
+}
+@supports (container-type: size) {
+    .grid-cell-callsign .callsign_display { font-size: 12cqmin; }
+}
+.grid-cell-callsign .callsign_line {
+    font-size: 1.1em;
+    font-weight: bold;
+    color: #fff;
+}
+.grid-cell-callsign .callsign_grid {
+    font-size: 0.65em;
+    color: #0f0;
+}
+.grid-cell-callsign .callsign_comment {
+    font-size: 0.5em;
+    color: #888;
+    font-style: italic;
+}
+.grid-cell-callsign .callsign_on_air_indicator {
+    margin-top: 0.4em;
+    text-align: center;
+    font-size: 0.9em;
+    color: #f44;
+    font-weight: bold;
+}

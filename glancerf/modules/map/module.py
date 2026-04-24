@@ -1,0 +1,145 @@
+"""World map with multiple tile sources, optional grid (lat/long or Maidenhead), day/night terminator, sun and moon markers, aurora overlay, HF/VHF propagation overlays, and APRS station locations (icons or age-coloured dots) from local cache."""
+
+from glancerf.modules.loader import load_assets
+
+inner_html, css, js = load_assets(__file__)
+
+GRID_OPTIONS = [
+    {"value": "none", "label": "None"},
+    {"value": "tropics", "label": "Tropics"},
+    {"value": "latlong", "label": "Lat/Long"},
+    {"value": "maidenhead", "label": "Maidenhead"},
+]
+
+ON_OFF_OPTIONS = [
+    {"value": "1", "label": "On"},
+    {"value": "0", "label": "Off"},
+]
+
+MODULE = {
+    "id": "map",
+    "name": "Map",
+    "color": "#0d1117",
+    "inner_html": inner_html,
+    "css": css,
+    "js": js,
+    "settings": [
+        {
+            "id": "map_display_name",
+            "label": "Map name (for targeting overlays from other modules)",
+            "type": "text",
+            "default": "",
+            "placeholder": "e.g. Main map, EU",
+        },
+        {
+            "id": "map_style",
+            "label": "Map source",
+            "type": "select",
+            "options": [
+                {"value": "carto", "label": "Carto"},
+                {"value": "opentopomap", "label": "OpenTopoMap"},
+                {"value": "esri", "label": "Esri (satellite)"},
+                {"value": "nasagibs", "label": "NASA GIBS"},
+            ],
+            "default": "carto",
+        },
+        {
+            "id": "tile_style",
+            "label": "Tile style",
+            "type": "select",
+            "parentSettingId": "map_style",
+            "optionsBySource": {
+                "carto": [
+                    {"value": "carto_voyager", "label": "Voyager"},
+                    {"value": "carto_positron", "label": "Positron"},
+                    {"value": "carto_positron_nolabels", "label": "Positron, no labels"},
+                    {"value": "carto_dark", "label": "Dark Matter"},
+                    {"value": "carto_dark_nolabels", "label": "Dark Matter, no labels"},
+                ],
+                "opentopomap": [{"value": "otm_default", "label": "Default"}],
+                "esri": [{"value": "esri_imagery", "label": "World Imagery"}],
+                "nasagibs": [{"value": "nasa_nightlights", "label": "Night Lights"}],
+            },
+            "options": [
+                {"value": "carto_voyager", "label": "Voyager"},
+                {"value": "carto_positron", "label": "Positron"},
+                {"value": "carto_positron_nolabels", "label": "Positron, no labels"},
+                {"value": "carto_dark", "label": "Dark Matter"},
+                {"value": "carto_dark_nolabels", "label": "Dark Matter, no labels"},
+            ],
+            "default": "carto_voyager",
+        },
+        {"id": "zoom", "label": "Zoom level", "type": "number", "min": 0, "max": 18, "default": "2"},
+        {"id": "center", "label": "Map center (grid square, lat,lng, or DMS e.g. 45°11'07\"N 6°56'51\"E)", "type": "text", "default": ""},
+        {"type": "separator"},
+        {
+            "id": "grid_style",
+            "label": "Grid overlay",
+            "type": "select",
+            "options": GRID_OPTIONS,
+            "default": "none",
+        },
+        {
+            "id": "show_terminator",
+            "label": "Day/night terminator line",
+            "type": "select",
+            "options": ON_OFF_OPTIONS,
+            "default": "0",
+        },
+        {
+            "id": "show_sun_moon",
+            "label": "Sun and moon on map",
+            "type": "select",
+            "options": ON_OFF_OPTIONS,
+            "default": "0",
+        },
+        {"type": "separator"},
+        {
+            "id": "show_aurora",
+            "label": "Aurora forecast overlay",
+            "type": "select",
+            "options": ON_OFF_OPTIONS,
+            "default": "0",
+        },
+        {
+            "id": "aurora_opacity",
+            "label": "Aurora overlay opacity",
+            "type": "range",
+            "min": 0,
+            "max": 100,
+            "default": "50",
+            "unit": "%",
+        },
+        {"type": "separator"},
+        {
+            "id": "propagation_source",
+            "label": "Propagation overlay",
+            "type": "select",
+            "options": [
+                {"value": "none", "label": "None"},
+                {"value": "kc2g_muf", "label": "HF: KC2G MUF (3000 km)"},
+                {"value": "kc2g_fof2", "label": "HF: KC2G foF2 (NVIS)"},
+                {"value": "tropo", "label": "VHF/UHF: Tropo"},
+                {"value": "vhf_aprs", "label": "VHF: APRS (144 MHz cache)"},
+            ],
+            "default": "none",
+        },
+        {
+            "id": "propagation_opacity",
+            "label": "Propagation overlay opacity",
+            "type": "range",
+            "min": 0,
+            "max": 100,
+            "default": "60",
+            "unit": "%",
+        },
+        {
+            "id": "propagation_aprs_age",
+            "label": "APRS data age (H:MM) for propagation overlay",
+            "type": "text",
+            "default": "6:00",
+            "placeholder": "e.g. 0:30, 1:15, 6:00",
+        },
+    ],
+    "cache_warmer": True,
+}

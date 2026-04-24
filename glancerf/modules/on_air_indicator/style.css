@@ -1,0 +1,22 @@
+.grid-cell-on_air_indicator .on_air_indicator_display {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    font-size: 4vmin;
+    font-weight: bold;
+}
+@supports (container-type: size) {
+    .grid-cell-on_air_indicator .on_air_indicator_display { font-size: 20cqmin; }
+}
+.grid-cell-on_air_indicator .on_air_indicator_on {
+    color: #f44;
+}
+.grid-cell-on_air_indicator .on_air_indicator_off {
+    color: #666;
+}

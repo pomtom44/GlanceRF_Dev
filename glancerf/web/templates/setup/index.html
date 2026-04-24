@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GlanceRF - First Run Setup</title>
+    <link rel="icon" href="/logo.png" type="image/png">
+    <link rel="stylesheet" href="/static/css/pages.css?v=__CACHE_BUST__">
+    <link rel="stylesheet" href="/static/css/setup.css?v=__CACHE_BUST__">
+    <link rel="stylesheet" href="/static/css/menu.css?v=__CACHE_BUST__">
+</head>
+<body>
+    <div id="glancerf-menu" role="dialog" aria-modal="true" aria-label="Menu">
+        <div class="glancerf-menu-overlay" id="glancerf-menu-overlay"></div>
+        <div class="glancerf-menu-panel">
+__GLANCERF_MENU_PANEL__
+        </div>
+    </div>
+    <div class="glancerf-page-container setup-container">
+        <h1>GlanceRF Setup</h1>
+
+        <div class="setup-tabs" role="tablist" aria-label="Setup steps">
+            <button type="button" class="setup-tab setup-nav-action active" id="tab-page-1" role="tab" tabindex="-1" data-page="1" aria-selected="true" aria-controls="setup-page-1">1. Welcome</button>
+            <button type="button" class="setup-tab setup-nav-action" id="tab-page-2" role="tab" tabindex="-1" data-page="2" aria-selected="false" aria-controls="setup-page-2">2. Hardware</button>
+            <button type="button" class="setup-tab setup-nav-action" id="tab-page-3" role="tab" tabindex="-1" data-page="3" aria-selected="false" aria-controls="setup-page-3">3. Station</button>
+            <button type="button" class="setup-tab setup-nav-action" id="tab-page-4" role="tab" tabindex="-1" data-page="4" aria-selected="false" aria-controls="setup-page-4">4. Layout</button>
+            <button type="button" class="setup-tab setup-nav-action" id="tab-page-5" role="tab" tabindex="-1" data-page="5" aria-selected="false" aria-controls="setup-page-5">5. Tips &amp; shortcuts</button>
+        </div>
+
+        <form id="setup-form" method="POST" action="/setup">
+            <div id="setup-page-1" class="setup-page active" role="tabpanel" aria-labelledby="tab-page-1">
+            <div class="setup-welcome">
+                <div class="setup-welcome__splash" aria-hidden="true">
+                    <div class="setup-welcome__rings">
+                        <span class="setup-welcome__ring"></span>
+                        <span class="setup-welcome__ring"></span>
+                        <span class="setup-welcome__ring"></span>
+                    </div>
+                    <div class="setup-welcome__scanline"></div>
+                    <div class="setup-welcome__brand">glanceRF</div>
+                </div>
+                <div class="setup-welcome__content">
+                    <h2 class="setup-welcome__title">Welcome to GlanceRF</h2>
+                    <p class="setup-welcome__lead">GlanceRF is a modular ham-radio dashboard: a live grid of tiles for APRS, maps, GPS, and more—so you can see what matters at a glance on your display.</p>
+                    <p class="setup-welcome__next">We&rsquo;ll walk you through a few setup steps—hardware, your station profile, screen layout, and tips—so your profile is configured and you&rsquo;re ready to use the app.</p>
+                </div>
+                <div class="button-group">
+                    <button type="button" id="setup-welcome-next" class="setup-nav-action" tabindex="-1">Next</button>
+                </div>
+            </div>
+            </div>
+
+            <div id="setup-page-2" class="setup-page" role="tabpanel" aria-labelledby="tab-page-2">
+            <h2 class="setup-subsection-title">GPIO</h2>
+            {setup_gpio_section}
+            <div id="gps-section">
+            <h2 class="setup-subsection-title setup-subsection-title--tight">GPS</h2>
+            <div id="gps-config-form" class="setup-gps-config">
+                <h3 class="setup-section-heading">Connection</h3>
+                <p id="gps-summary-line" class="gps-summary-line" role="status" aria-live="polite"></p>
+                <div class="form-group">
+                    <label for="gps_source" class="setup-gps-label">Method</label>
+                    <select id="gps_source" name="gps_source" class="setup-gps-select">
+                        <option value="auto"{gps_source_auto_selected}>Auto (GPSD first, then serial)</option>
+                        <option value="gpsd"{gps_source_gpsd_selected}>GPSD only</option>
+                        <option value="serial"{gps_source_serial_selected}>Direct serial (NMEA) only</option>
+                    </select>
+                </div>
+                <div id="gps-serial-port-row" class="form-group setup-gps-serial-row">
+                    <label for="gps_serial_port" class="setup-gps-label">Serial port</label>
+                    <select id="gps_serial_port" name="gps_serial_port" class="setup-gps-select">
+                        <option value="">-- Select port --</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="gps_time_enabled" class="setup-gps-label">Use GPS for time sync</label>
+                    <select id="gps_time_enabled" name="gps_time_enabled" class="setup-gps-select">
+                        <option value="0"{gps_time_disabled_selected}>Off (use system time)</option>
+                        <option value="1"{gps_time_enabled_selected}>On</option>
+                    </select>
+                </div>
+                <button type="button" id="gps-refresh-btn" class="setup-nav-action" tabindex="-1">Refresh status</button>
+            </div>
+            <div id="gps-status-container" class="setup-gps-status"></div>
+            </div>
+            <div class="button-group">
+                <button type="button" id="setup-hardware-next" class="setup-nav-action" tabindex="-1">Next</button>
+            </div>
+            </div>
+
+            <div id="setup-page-3" class="setup-page" role="tabpanel" aria-labelledby="tab-page-3">
+            <div class="form-group">
+                <label for="setup_callsign">Callsign</label>
+                <div class="setup-callsign-row">
+                    <input type="text" id="setup_callsign" name="setup_callsign" value="{current_callsign_esc}" placeholder="e.g. ZL4ST" maxlength="32">
+                    <span class="setup-callsign-hyphen">-</span>
+                    <input type="text" id="setup_ssid" name="setup_ssid" value="{current_ssid_esc}" placeholder="01" maxlength="2" pattern="[0-9][0-9]?" class="setup-ssid-input" title="APRS SSID (e.g. 01). Used as callsign-SSID when connecting.">
+                </div>
+                <span class="setup-form-note">Callsign is the default used by modules unless overwritten per module.<br>SSID is used when connecting to services such as APRS-IS.</span>
+            </div>
+            <div class="form-group">
+                <label for="setup_location">Default location</label>
+                <input type="text" id="setup_location" name="setup_location" value="{current_location_esc}" placeholder="Grid square (e.g. RE78hk) or lat,lng (e.g. -43.5,172.6)" maxlength="64">
+                <div class="form-group setup-gps-location-row">
+                    <label for="gps_location_enabled" class="setup-gps-location-label">Use GPS for default location</label>
+                    <select id="gps_location_enabled" class="setup-gps-location-select">
+                        <option value="0"{gps_location_disabled_selected}>Off</option>
+                        <option value="1"{gps_location_enabled_selected}>On</option>
+                    </select>
+                    <input type="hidden" id="gps_location_enabled_submit" name="gps_location_enabled" value="{gps_location_enabled_value}">
+                    <span id="gps-location-hint" class="setup-location-hint setup-location-hint--muted" aria-live="polite"></span>
+                </div>
+                <span class="setup-form-note">Manual location above, or use GPS when available (requires GPS fix).</span>
+            </div>
+            <div class="form-group setup-aprs-cache-section">
+                <h3 class="setup-section-heading">APRS cache</h3>
+                <div class="setup-aprs-cache-grid">
+                    <div class="form-group">
+                        <label for="aprs_cache_max_size_mb">Max size (MB)</label>
+                        <input type="number" id="aprs_cache_max_size_mb" name="aprs_cache_max_size_mb" value="{current_aprs_cache_max_size_mb}" min="100" max="10000" step="100" title="Max file size in MB before purging">
+                        <span class="form-hint">Max cache file size in MB. 100–10,000 MB (100 MB–10 GB). Default 500 MB. Enter 1024 for 1 GB.</span>
+                    </div>
+                    <div class="form-group">
+                        <label for="aprs_cache_max_age_hours">Max age (hours)</label>
+                        <input type="number" id="aprs_cache_max_age_hours" name="aprs_cache_max_age_hours" value="{current_aprs_cache_max_age_hours}" min="1" max="8760" step="1" title="Purge records older than this">
+                        <span class="form-hint">Purge records older than this. 1–8760 (1 year). Default 168 (7 days).</span>
+                    </div>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="update_mode">Updates</label>
+                <select id="update_mode" name="update_mode">
+                    <option value="none"{update_mode_none_selected}>Don't update</option>
+                    <option value="notify"{update_mode_notify_selected}>Notify only</option>
+                    <option value="auto"{update_mode_auto_selected}>Auto update</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="update_check_time">Time to check for updates</label>
+                <input type="time" id="update_check_time" name="update_check_time" value="{current_update_check_time}">
+                <span class="setup-form-note">Local time (only used when Updates is Notify or Auto update).</span>
+            </div>
+            <div class="form-group">
+                <label for="telemetry_enabled">Telemetry</label>
+                <select id="telemetry_enabled" name="telemetry_enabled">
+                    <option value="1"{telemetry_enabled_selected}>Enabled</option>
+                    <option value="0"{telemetry_disabled_selected}>Disabled (Opt-out)</option>
+                </select>
+                <span class="setup-form-note">Help improve GlanceRF by sending anonymous usage data (version, system info, module counts).<br>No personal information, callsigns, or locations are collected. You can opt-out at any time.<br><a href="https://github.com/pomtom44/GlanceRF/blob/main/Project/docs/TELEMETRY.md" target="_blank" rel="noopener noreferrer" class="setup-link-accent">Review the telemetry policy on GitHub</a>.</span>
+            </div>
+            <div class="button-row">
+                <button type="button" id="setup-station-back" class="setup-nav-action" tabindex="-1">Back</button>
+                <button type="button" id="setup-station-next" class="setup-nav-action" tabindex="-1">Next</button>
+            </div>
+            </div>
+
+            <div id="setup-page-4" class="setup-page" role="tabpanel" aria-labelledby="tab-page-4">
+            <div class="form-group">
+                <table class="setup-ratio-table">
+                    <tr>
+                        <td><label for="aspect_ratio">Screen Aspect Ratio</label></td>
+                        <td><select id="aspect_ratio" name="aspect_ratio" class="setup-ratio-select" required>
+                            {ratio_options}
+                        </select></td>
+                    </tr>
+                    <tr>
+                        <td><label for="orientation">Orientation</label></td>
+                        <td><select id="orientation" name="orientation" class="setup-ratio-select" required>
+                            <option value="landscape"{orientation_landscape_selected}>Landscape</option>
+                            <option value="portrait"{orientation_portrait_selected}>Portrait</option>
+                        </select></td>
+                    </tr>
+                    <tr class="setup-ratio-note-row">
+                        <td colspan="2"><span class="setup-ratio-note">This is just a guide to get your layout looking right, this does not lock the project to that aspect ratio.</span></td>
+                    </tr>
+                </table>
+            </div>
+            <div class="form-group">
+                <div class="preview-with-sliders">
+                    <div class="slider-container">
+                        <div class="slider-container-inner">
+                            <div class="slider-label">
+                                <span id="columns-value">{current_columns}</span>
+                            </div>
+                            <input type="range" id="grid_columns" name="grid_columns" min="1" max="{max_grid_scale}" value="{current_columns}" class="slider" orient="horizontal">
+                        </div>
+                    </div>
+                    <div class="preview-wrapper">
+                        <div class="slider-vertical-wrapper">
+                            <div class="slider-vertical-container">
+                                <div class="slider-vertical-label">
+                                    <span id="rows-value">{current_rows}</span>
+                                </div>
+                                <div class="slider-vertical-rotated">
+                                    <input type="range" id="grid_rows" name="grid_rows" min="1" max="{max_grid_scale}" value="{current_rows}" class="slider-vertical" orient="vertical">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="preview-container">
+                            <div class="preview-square" id="preview-square">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="button-row">
+                <button type="button" id="setup-layout-back" class="setup-nav-action" tabindex="-1">Back</button>
+                <button type="button" id="setup-layout-next" class="setup-nav-action" tabindex="-1">Next</button>
+            </div>
+            </div>
+
+            <div id="setup-page-5" class="setup-page" role="tabpanel" aria-labelledby="tab-page-5">
+            <div class="form-group setup-tips-content">
+                <h2>Menu</h2>
+                <p>Right-click to open the menu. From the menu you can go to Setup, Layout &amp; Config editor, Modules list, or run Manual Updates. (On the main dashboard you can also press <strong>M</strong>.)</p>
+                <h2>GPS module</h2>
+                <p>Add the <strong>GPS</strong> module to the grid to see live GPS stats (position, time, altitude, speed, track, satellites) when a GPS receiver is connected.</p>
+                <h2>Map only modules</h2>
+                <p>Use <a href="/map-modules" class="setup-link-accent">Map only modules</a> to add modules that feed data to the map overlay (e.g. satellites, APRS) without taking a grid cell on the main dashboard.</p>
+                <h2>Setup guides</h2>
+                <p>Check the <a href="https://glancerf.zl4st.com" target="_blank" rel="noopener noreferrer" class="setup-link-accent">GlanceRF website</a> for setup guides (quick start, GPIO wiring, and more).</p>
+                <h2>Report problems</h2>
+                <p class="setup-tips-content__last">Found a bug or have a suggestion? <a href="https://github.com/pomtom44/GlanceRF/issues" target="_blank" rel="noopener noreferrer" class="setup-link-accent">Open an issue on GitHub</a> to report it.</p>
+            </div>
+            <div class="button-row">
+                <button type="button" id="setup-tips-back" class="setup-nav-action" tabindex="-1">Back</button>
+                <button type="submit" id="setup-continue-btn" class="setup-nav-action" tabindex="-1">Continue</button>
+            </div>
+            </div>
+        </form>
+    </div>
+
+    <script>
+        window.SETUP_CONFIG = {setup_config_json};
+    </script>
+    <script src="/static/js/menu.js?v=__CACHE_BUST__"></script>
+    <script src="/static/js/setup.js?v=__CACHE_BUST__"></script>
+</body>
+</html>

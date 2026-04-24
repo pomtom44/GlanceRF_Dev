@@ -1,0 +1,74 @@
+.grid-cell-rss .rss_display {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 6px 8px;
+    box-sizing: border-box;
+    container-type: inline-size;
+    container-name: rss;
+}
+.grid-cell-rss .rss_title {
+    font-size: clamp(10px, 8cqw, 20px);
+    font-weight: 600;
+    color: #0f0;
+    margin-bottom: 4px;
+    flex-shrink: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: center;
+}
+@supports not (container-type: inline-size) {
+    .grid-cell-rss .rss_title {
+        font-size: min(2.5vmin, 1.25rem);
+    }
+}
+.grid-cell-rss .rss_list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    font-size: 12px;
+    color: #ccc;
+    display: flex;
+    flex-direction: column;
+}
+.grid-cell-rss .rss_list li {
+    margin-bottom: 4px;
+    padding: 4px 6px;
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 4px;
+    flex-shrink: 1;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+}
+.grid-cell-rss .rss_list li:last-child {
+    margin-bottom: 0;
+}
+.grid-cell-rss .rss_list a {
+    color: #0f0;
+    text-decoration: none;
+}
+.grid-cell-rss .rss_list a:hover {
+    text-decoration: underline;
+}
+.grid-cell-rss .rss_list .rss_item_title {
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: #0f0;
+    font-weight: 600;
+}
+.grid-cell-rss .rss_error,
+.grid-cell-rss .rss_loading {
+    font-size: 13px;
+    color: #888;
+    flex-shrink: 0;
+}

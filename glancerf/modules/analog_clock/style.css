@@ -1,0 +1,22 @@
+.grid-cell-analog_clock {
+    padding: 4px;
+}
+.grid-cell-analog_clock .analog_clock_wrap {
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    color: #ccc;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.grid-cell-analog_clock .analog_clock_face {
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    overflow: visible;
+    display: block;
+    object-fit: contain;
+}

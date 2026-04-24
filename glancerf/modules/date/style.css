@@ -1,0 +1,17 @@
+/* See clock/style.css — avoid position on selector that is also .glancerf-cell-slot in stacks */
+.grid-cell-date .date_display {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 4vmin;
+    color: #ccc;
+    text-align: center;
+}
+@supports (container-type: size) {
+    .grid-cell-date .date_display { font-size: 12cqmin; }
+}

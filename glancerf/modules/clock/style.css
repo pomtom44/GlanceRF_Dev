@@ -1,0 +1,25 @@
+/* position: do not set position on this selector — it matches .glancerf-cell-slot in stacks and would override
+   position:absolute, breaking overlay. Outer .grid-cell is already position:relative for single-cell layout. */
+.grid-cell-clock .clock_display {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.25em;
+    color: #ccc;
+    text-align: center;
+    font-size: 4vmin;
+}
+@supports (container-type: size) {
+    .grid-cell-clock .clock_display { font-size: 12cqmin; }
+}
+.grid-cell-clock .clock_date { color: #888; font-size: 0.85em; }
+.grid-cell-clock .clock_local,
+.grid-cell-clock .clock_utc,
+.grid-cell-clock .clock_third { color: #888; font-size: 0.9em; }
+.grid-cell-clock .clock_primary { color: #fff; font-size: 1em; }
