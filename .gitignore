@@ -1,4 +1,4 @@
-# Python
+﻿# Python
 __pycache__/
 *.py[cod]
 *$py.class
@@ -43,7 +43,6 @@ Thumbs.db
 .update_staging/
 .update_backup/
 restart_after_update.*
-restart_services.bat
 restart_services.sh
 
 # Local / debug (not for version control)
