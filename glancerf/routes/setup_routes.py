@@ -276,7 +276,7 @@ def register_setup_routes(app: FastAPI, connection_manager: Optional[ConnectionM
         # Start APRS cache when setup is saved (covers first launch when callsign was just set)
         start_aprs_cache()
 
-        redirect_url = "/layout" if is_first_run else "/"
+        redirect_url = "/layout?tour=1" if is_first_run else "/"
 
         if connection_manager:
             try:

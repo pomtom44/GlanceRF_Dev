@@ -536,6 +536,86 @@ body {
     transform: scale(0.98);
 }
 
+body.layout-tour-active .save-button {
+    bottom: 168px;
+}
+
+.layout-tour-root {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 2000;
+    padding: 0 12px 12px;
+    pointer-events: none;
+}
+.layout-tour-root.layout-tour-hidden {
+    display: none;
+}
+.layout-tour-panel {
+    pointer-events: auto;
+    max-width: 640px;
+    margin: 0 auto;
+    background: rgba(13, 17, 23, 0.97);
+    border: 1px solid #0f0;
+    border-radius: 8px;
+    padding: 14px 16px 16px;
+    box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.5);
+}
+.layout-tour-title {
+    font-size: 15px;
+    color: #0f0;
+    margin: 0 0 8px 0;
+    font-weight: bold;
+}
+.layout-tour-body {
+    font-size: 12px;
+    line-height: 1.45;
+    color: #c9d1d9;
+    margin: 0 0 14px 0;
+}
+.layout-tour-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    justify-content: flex-end;
+}
+.layout-tour-btn {
+    font-family: inherit;
+    font-size: 12px;
+    padding: 8px 14px;
+    border-radius: 4px;
+    cursor: pointer;
+    border: 1px solid #30363d;
+    background: #21262d;
+    color: #c9d1d9;
+}
+.layout-tour-btn:hover {
+    background: #30363d;
+}
+.layout-tour-btn.layout-tour-primary {
+    background: #0f0;
+    color: #000;
+    border-color: #0f0;
+    font-weight: bold;
+}
+.layout-tour-btn.layout-tour-primary:hover {
+    background: #0c0;
+    border-color: #0c0;
+}
+.layout-tour-btn.layout-tour-skip {
+    margin-right: auto;
+    border-color: #484f58;
+}
+.layout-tour-pulse {
+    outline: 3px solid #ff0 !important;
+    outline-offset: 2px;
+    box-shadow: 0 0 0 4px rgba(255, 255, 0, 0.25);
+    position: relative;
+    z-index: 15;
+}
+
 .cell-module-settings {
     width: 100%;
     min-width: 0;

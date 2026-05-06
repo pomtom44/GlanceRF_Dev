@@ -54,11 +54,7 @@ def register_root(app):
         cell_spans = current_config.get("cell_spans") or {}
         merged_cells, _ = build_merged_cells_from_spans(cell_spans)
         module_settings = current_config.get("module_settings") or {}
-        has_any_module = any(
-            (cell or "").strip()
-            for row in layout
-            for cell in (row if isinstance(row, (list, tuple)) else [])
-        )
+        has_any_module = bool(collect_module_ids_from_layout(layout, module_settings))
         if not has_any_module:
             grid_html = (
                 '<div class="empty-state-message">'

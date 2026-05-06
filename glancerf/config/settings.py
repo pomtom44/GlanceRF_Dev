@@ -120,6 +120,9 @@ def _validate_config(config: Dict[str, Any]) -> None:
     if "first_run" in config and config["first_run"] is not None:
         _check_type("first_run", config["first_run"], bool)
 
+    if "layout_editor_tour_seen" in config and config["layout_editor_tour_seen"] is not None:
+        _check_type("layout_editor_tour_seen", config["layout_editor_tour_seen"], bool)
+
     if "log_level" in config and config["log_level"] is not None:
         _check_type("log_level", config["log_level"], str)
         if config["log_level"] not in ("default", "detailed", "verbose", "debug"):

@@ -1640,6 +1640,12 @@ var currentDesktopWidth = 0;
                         event.preventDefault();
                         return;
                     }
+                    if (typeof window._layoutTourOnEscape === 'function') {
+                        if (window._layoutTourOnEscape()) {
+                            event.preventDefault();
+                            return;
+                        }
+                    }
                     var menu = document.getElementById('glancerf-menu');
                     if (menu && menu.classList.contains('open')) {
                         menu.classList.remove('open');
@@ -1654,6 +1660,183 @@ var currentDesktopWidth = 0;
                     var menu = document.getElementById('glancerf-menu');
                     if (menu) menu.classList.remove('open');
                 });
+            })();
+
+            (function initLayoutEditorTour() {
+                if (!cfg.show_layout_tour) return;
+                var root = document.getElementById('layout-tour-root');
+                var titleEl = document.getElementById('layout-tour-title');
+                var bodyEl = document.getElementById('layout-tour-body');
+                var btnSkip = document.getElementById('layout-tour-skip');
+                var btnBack = document.getElementById('layout-tour-back');
+                var btnNext = document.getElementById('layout-tour-next');
+                if (!root || !titleEl || !bodyEl || !btnSkip || !btnBack || !btnNext) return;
+
+                var stepIndex = 0;
+                var highlightedEl = null;
+                var tourFinished = false;
+
+                function getTourAnchorCell() {
+                    var cells = Array.prototype.slice.call(document.querySelectorAll('.grid-cell:not(.hidden)'));
+                    cells.sort(function(a, b) {
+                        var ra = parseInt(a.getAttribute('data-row'), 10) || 0;
+                        var ca = parseInt(a.getAttribute('data-col'), 10) || 0;
+                        var rb = parseInt(b.getAttribute('data-row'), 10) || 0;
+                        var cb = parseInt(b.getAttribute('data-col'), 10) || 0;
+                        if (ra !== rb) return ra - rb;
+                        return ca - cb;
+                    });
+                    return cells[0] || null;
+                }
+
+                function clearHighlight() {
+                    if (highlightedEl && highlightedEl.classList) {
+                        highlightedEl.classList.remove('layout-tour-pulse');
+                    }
+                    highlightedEl = null;
+                }
+
+                function visibleExpandButton(cell) {
+                    if (!cell) return null;
+                    var right = cell.querySelector('.expand-btn.expand-right');
+                    var down = cell.querySelector('.expand-btn.expand-down');
+                    function shown(btn) {
+                        if (!btn) return false;
+                        if (btn.offsetParent === null) return false;
+                        var st = window.getComputedStyle(btn);
+                        return st.display !== 'none' && st.visibility !== 'hidden';
+                    }
+                    if (shown(right)) return right;
+                    if (shown(down)) return down;
+                    return right || down;
+                }
+
+                function settingsGearButton(cell) {
+                    if (!cell) return null;
+                    return cell.querySelector('.cell-slot-config-btn:not(.cell-slot-config-btn-hidden)');
+                }
+
+                var steps = [
+                    {
+                        title: 'Welcome',
+                        body: 'This short guide walks you through adding a module to a cell, making the cell larger, and opening module settings. Use Skip any time if you already know the layout editor.',
+                        highlight: function() { return null; }
+                    },
+                    {
+                        title: 'Choose a module',
+                        body: 'Each grid cell can show one module (or several that rotate). Open the module list in the highlighted cell and pick what you want, for example Clock or Callsign.',
+                        highlight: function(cell) {
+                            if (!cell) return null;
+                            return cell.querySelector('.cell-slot-module-select');
+                        }
+                    },
+                    {
+                        title: 'Resize the cell',
+                        body: 'Use the arrow buttons on the edge of the cell to merge with the neighbor on the right or below. That gives your module more space on the dashboard.',
+                        highlight: function(cell) {
+                            return visibleExpandButton(cell);
+                        }
+                    },
+                    {
+                        title: 'Module settings',
+                        body: 'After you pick a module, click the gear icon next to it to change its options. If you do not see a gear, pick a different module that has settings. Close the panel when you are done.',
+                        highlight: function(cell) {
+                            return settingsGearButton(cell);
+                        }
+                    },
+                    {
+                        title: 'Save your layout',
+                        body: 'When you are happy with the grid, click Save Layout to apply it. You can reopen the layout editor any time from the menu.',
+                        highlight: function() {
+                            return document.getElementById('save-button');
+                        }
+                    }
+                ];
+
+                function stripTourFromUrl() {
+                    try {
+                        var u = new URL(window.location.href);
+                        u.searchParams.delete('tour');
+                        var q = u.searchParams.toString();
+                        var path = u.pathname + (q ? '?' + q : '') + u.hash;
+                        history.replaceState({}, '', path);
+                    } catch (e) {}
+                }
+
+                function persistTourSeen() {
+                    if (tourFinished) return;
+                    tourFinished = true;
+                    try {
+                        fetch('/api/layout-editor-tour-seen', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: '{}',
+                            credentials: 'same-origin'
+                        }).catch(function() {});
+                    } catch (e) {}
+                }
+
+                function endTour() {
+                    persistTourSeen();
+                    clearHighlight();
+                    root.classList.add('layout-tour-hidden');
+                    root.setAttribute('aria-hidden', 'true');
+                    document.body.classList.remove('layout-tour-active');
+                    stripTourFromUrl();
+                    window._layoutTourOnEscape = null;
+                }
+
+                function applyStep() {
+                    clearHighlight();
+                    var step = steps[stepIndex];
+                    if (!step) {
+                        endTour();
+                        return;
+                    }
+                    titleEl.textContent = step.title;
+                    bodyEl.textContent = step.body;
+                    btnBack.style.display = stepIndex > 0 ? '' : 'none';
+                    btnNext.textContent = stepIndex >= steps.length - 1 ? 'Done' : 'Next';
+
+                    var cell = stepIndex === steps.length - 1 ? null : getTourAnchorCell();
+                    var target = step.highlight(cell);
+                    if (target && target.classList) {
+                        highlightedEl = target;
+                        target.classList.add('layout-tour-pulse');
+                        try {
+                            target.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+                        } catch (e) {
+                            try { target.scrollIntoView(); } catch (e2) {}
+                        }
+                    }
+                }
+
+                window._layoutTourOnEscape = function() {
+                    if (root.classList.contains('layout-tour-hidden')) return false;
+                    endTour();
+                    return true;
+                };
+
+                btnSkip.addEventListener('click', function() { endTour(); });
+                btnBack.addEventListener('click', function() {
+                    if (stepIndex > 0) {
+                        stepIndex -= 1;
+                        applyStep();
+                    }
+                });
+                btnNext.addEventListener('click', function() {
+                    if (stepIndex >= steps.length - 1) {
+                        endTour();
+                        return;
+                    }
+                    stepIndex += 1;
+                    applyStep();
+                });
+
+                root.classList.remove('layout-tour-hidden');
+                root.setAttribute('aria-hidden', 'false');
+                document.body.classList.add('layout-tour-active');
+                applyStep();
             })();
 
             if (typeof window.renderConflictBanner === 'function') {

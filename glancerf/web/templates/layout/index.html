@@ -33,6 +33,18 @@
 
     <button class="save-button" id="save-button">Save Layout</button>
 
+    <div id="layout-tour-root" class="layout-tour-root layout-tour-hidden" aria-hidden="true">
+        <div class="layout-tour-panel" role="region" aria-labelledby="layout-tour-title">
+            <h2 class="layout-tour-title" id="layout-tour-title">How to use the layout editor</h2>
+            <p class="layout-tour-body" id="layout-tour-body"></p>
+            <div class="layout-tour-actions">
+                <button type="button" id="layout-tour-skip" class="layout-tour-btn layout-tour-skip">Skip</button>
+                <button type="button" id="layout-tour-back" class="layout-tour-btn">Back</button>
+                <button type="button" id="layout-tour-next" class="layout-tour-btn layout-tour-primary">Next</button>
+            </div>
+        </div>
+    </div>
+
     <div id="glancerf-menu" role="dialog" aria-modal="true" aria-label="Menu">
         <div class="glancerf-menu-overlay" id="glancerf-menu-overlay"></div>
         <div class="glancerf-menu-panel">
@@ -56,7 +68,8 @@ __GLANCERF_MENU_PANEL__
             "setup_callsign": __SETUP_CALLSIGN_JSON__,
             "setup_location": __SETUP_LOCATION_JSON__,
             "conflicts": __CONFLICT_DATA_JSON__,
-            "map_instance_list": __MAP_INSTANCE_LIST_JSON__
+            "map_instance_list": __MAP_INSTANCE_LIST_JSON__,
+            "show_layout_tour": __SHOW_LAYOUT_TOUR_JSON__
         };
     </script>
     <script src="/static/js/menu.js?v=__CACHE_BUST__"></script>

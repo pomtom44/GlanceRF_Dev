@@ -15,7 +15,7 @@ from glancerf.config import get_config, get_logger
 from glancerf.modules import get_module_by_id, get_module_dir, get_modules
 from glancerf.utils import get_effective_location_string, rate_limit_dependency
 from glancerf.utils.exception_logging import log_unexpected
-from glancerf.utils.cell_stack import collect_map_instance_list, inject_map_target_settings
+from glancerf.utils.cell_stack import collect_map_instance_list, collect_module_ids_from_layout, inject_map_target_settings
 from glancerf.web import ConnectionManager
 from glancerf.web.menu_html import get_menu_html
 
@@ -244,11 +244,8 @@ def register_pages(app, connection_manager: Optional[ConnectionManager] = None):
         if not isinstance(map_overlay_layout, list):
             map_overlay_layout = []
         map_overlay_ids = set(m for m in map_overlay_layout if m and isinstance(m, str))
-        enabled_module_ids = set()
-        for row in layout:
-            for cell_value in row:
-                if cell_value:
-                    enabled_module_ids.add(cell_value)
+        module_settings = current_config.get("module_settings") or {}
+        enabled_module_ids = collect_module_ids_from_layout(layout, module_settings)
 
         all_modules = get_modules()
         modules_html = ""

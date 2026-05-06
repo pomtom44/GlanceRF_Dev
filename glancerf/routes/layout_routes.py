@@ -163,7 +163,7 @@ def register_layout_routes(app: FastAPI, connection_manager: ConnectionManager):
         return Response(content=content, media_type="application/javascript; charset=utf-8")
 
     @app.get("/layout")
-    async def layout_configurator():
+    async def layout_configurator(request: Request):
         """Layout configurator page - configure what displays in each grid cell."""
         _log.debug("GET /layout")
         try:
@@ -358,6 +358,11 @@ def register_layout_routes(app: FastAPI, connection_manager: ConnectionManager):
         html_content = html_content.replace("__MODULE_SETTINGS_SCRIPTS__", module_settings_scripts_html)
         html_content = html_content.replace("__GLANCERF_MENU_PANEL__", get_menu_html())
 
+        want_tour = (request.query_params.get("tour") or "").strip() == "1"
+        tour_seen = bool(current_config.get("layout_editor_tour_seen"))
+        show_layout_tour = want_tour and not tour_seen
+        html_content = html_content.replace("__SHOW_LAYOUT_TOUR_JSON__", _json.dumps(show_layout_tour))
+
         _log.debug("layout: rendered page grid=%sx%s", grid_columns, grid_rows)
         return HTMLResponse(content=html_content)
 
@@ -530,6 +535,18 @@ def register_layout_routes(app: FastAPI, connection_manager: ConnectionManager):
             return JSONResponse({"success": True})
         except Exception as e:
             log_unexpected(_log, "layout save failed")
+            return JSONResponse({"error": str(e)}, status_code=500)
+
+    @app.post("/api/layout-editor-tour-seen")
+    async def layout_editor_tour_seen(_: None = Depends(rate_limit_dependency)):
+        """Mark the post-setup layout editor tour as finished (skip or last step)."""
+        _log.debug("POST /api/layout-editor-tour-seen")
+        try:
+            current_config = get_config()
+            current_config.set("layout_editor_tour_seen", True)
+            return JSONResponse({"success": True})
+        except Exception as e:
+            log_unexpected(_log, "layout-editor-tour-seen failed")
             return JSONResponse({"error": str(e)}, status_code=500)
 
     @app.post("/api/config/resolve-module-conflict")
