@@ -536,31 +536,46 @@ body {
     transform: scale(0.98);
 }
 
-body.layout-tour-active .save-button {
-    bottom: 168px;
-}
-
 .layout-tour-root {
     position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 2000;
-    padding: 0 12px 12px;
+    inset: 0;
+    z-index: 2400;
     pointer-events: none;
 }
 .layout-tour-root.layout-tour-hidden {
     display: none;
 }
+.layout-tour-spotlight-svg {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: auto;
+    opacity: 0;
+    transition: opacity 0.35s ease;
+}
+.layout-tour-root:not(.layout-tour-hidden) .layout-tour-spotlight-svg {
+    opacity: 1;
+}
+.layout-tour-spotlight-path {
+    pointer-events: auto;
+}
 .layout-tour-panel {
     pointer-events: auto;
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: calc(100% - 24px);
     max-width: 640px;
-    margin: 0 auto;
+    max-height: calc(100vh - 24px);
+    overflow-y: auto;
+    z-index: 1;
+    margin: 0;
     background: rgba(13, 17, 23, 0.97);
     border: 1px solid #0f0;
     border-radius: 8px;
     padding: 14px 16px 16px;
-    box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
 }
 .layout-tour-title {
     font-size: 15px;
@@ -611,9 +626,28 @@ body.layout-tour-active .save-button {
 .layout-tour-pulse {
     outline: 3px solid #ff0 !important;
     outline-offset: 2px;
-    box-shadow: 0 0 0 4px rgba(255, 255, 0, 0.25);
+    box-shadow: 0 0 0 4px rgba(255, 255, 0, 0.35);
     position: relative;
     z-index: 15;
+}
+
+.layout-tour-locked {
+    opacity: 0.3 !important;
+    pointer-events: none !important;
+    cursor: not-allowed !important;
+    filter: grayscale(0.5);
+}
+
+.layout-tour-target-btn {
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    cursor: pointer !important;
+    filter: none;
+}
+
+.layout-cell-settings-modal-body.layout-tour-locked {
+    pointer-events: none !important;
+    opacity: 0.45;
 }
 
 .cell-module-settings {

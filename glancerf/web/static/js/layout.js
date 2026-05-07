@@ -668,11 +668,21 @@ var currentDesktopWidth = 0;
             document.addEventListener('click', function(e) {
                 var t = e.target;
                 if (t && t.classList && t.classList.contains('cell-slot-config-btn')) {
+                    var cellG = t.closest('.grid-cell');
+                    var srG = t.closest('.cell-module-slot-row');
+                    if (typeof window._layoutTourShouldBlockGear === 'function') {
+                        try {
+                            if (window._layoutTourShouldBlockGear(cellG, srG, t)) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                e.stopImmediatePropagation();
+                                return;
+                            }
+                        } catch (err) {}
+                    }
                     e.preventDefault();
                     e.stopPropagation();
-                    var cell = t.closest('.grid-cell');
-                    var sr = t.closest('.cell-module-slot-row');
-                    if (cell && sr) openCellSlotSettingsModal(cell, sr);
+                    if (cellG && srG) openCellSlotSettingsModal(cellG, srG);
                 }
             }, true);
 
@@ -960,6 +970,11 @@ var currentDesktopWidth = 0;
                                 hideCell(pos.row, pos.col);
                             });
                             updateCellSpan(cell, currentColspan + 1, currentRowspan);
+                            try {
+                                if (typeof window._layoutTourOnLayoutChange === 'function') {
+                                    window._layoutTourOnLayoutChange({ action: 'expand', direction: 'right' });
+                                }
+                            } catch (e) {}
                         }
                     } else if (direction === 'down') {
                         const targetRow = row + currentRowspan;
@@ -997,6 +1012,11 @@ var currentDesktopWidth = 0;
                                 hideCell(pos.row, pos.col);
                             });
                             updateCellSpan(cell, currentColspan, currentRowspan + 1);
+                            try {
+                                if (typeof window._layoutTourOnLayoutChange === 'function') {
+                                    window._layoutTourOnLayoutChange({ action: 'expand', direction: 'down' });
+                                }
+                            } catch (e) {}
                         }
                     }
                 } else if (event.target.classList.contains('contract-btn')) {
@@ -1019,6 +1039,11 @@ var currentDesktopWidth = 0;
                             showCell(r, showCol);
                         }
                         updateCellSpan(cell, currentColspan - 1, currentRowspan);
+                        try {
+                            if (typeof window._layoutTourOnLayoutChange === 'function') {
+                                window._layoutTourOnLayoutChange({ action: 'contract', direction: 'left' });
+                            }
+                        } catch (e) {}
                     } else if (direction === 'top' && currentRowspan > 1) {
                         // Show the bottommost row of cells and contract
                         const showRow = row + currentRowspan - 1;
@@ -1026,6 +1051,11 @@ var currentDesktopWidth = 0;
                             showCell(showRow, c);
                         }
                         updateCellSpan(cell, currentColspan, currentRowspan - 1);
+                        try {
+                            if (typeof window._layoutTourOnLayoutChange === 'function') {
+                                window._layoutTourOnLayoutChange({ action: 'contract', direction: 'top' });
+                            }
+                        } catch (e) {}
                     }
                 }
             });
@@ -1055,6 +1085,15 @@ var currentDesktopWidth = 0;
         
             // Save button handler
             document.getElementById('save-button').addEventListener('click', async function() {
+                var tourFinalShown = false;
+                if (typeof window._layoutTourNotifySaveStart === 'function') {
+                    try {
+                        tourFinalShown = !!window._layoutTourNotifySaveStart();
+                    } catch (e) {}
+                }
+                if (tourFinalShown) {
+                    try { sessionStorage.setItem('glancerf_show_final_tour_msg', '1'); } catch (e) {}
+                }
                 const layout = [];
                 const spans = {};
                 const rows = gridRows;
@@ -1670,11 +1709,63 @@ var currentDesktopWidth = 0;
                 var btnSkip = document.getElementById('layout-tour-skip');
                 var btnBack = document.getElementById('layout-tour-back');
                 var btnNext = document.getElementById('layout-tour-next');
+                var spotlightSvg = document.getElementById('layout-tour-spotlight-svg');
+                var spotlightPath = document.getElementById('layout-tour-spotlight-path');
+                var tourAspect = document.getElementById('aspect-container');
                 if (!root || !titleEl || !bodyEl || !btnSkip || !btnBack || !btnNext) return;
 
                 var stepIndex = 0;
                 var highlightedEl = null;
+                var currentHoleEl = null;
                 var tourFinished = false;
+                var tourLayoutListenersAttached = false;
+
+                function updateSpotlightPath(el) {
+                    if (!spotlightPath || !spotlightSvg) return;
+                    var vw = window.innerWidth || document.documentElement.clientWidth || 0;
+                    var vh = window.innerHeight || document.documentElement.clientHeight || 0;
+                    if (vw < 1) vw = 1;
+                    if (vh < 1) vh = 1;
+                    spotlightSvg.setAttribute('viewBox', '0 0 ' + vw + ' ' + vh);
+                    spotlightSvg.setAttribute('width', String(vw));
+                    spotlightSvg.setAttribute('height', String(vh));
+                    if (!el || typeof el.getBoundingClientRect !== 'function') {
+                        spotlightPath.setAttribute('d', 'M0,0 L' + vw + ',0 L' + vw + ',' + vh + ' L0,' + vh + ' Z');
+                        return;
+                    }
+                    var r = el.getBoundingClientRect();
+                    var pad = 14;
+                    var x = r.left - pad;
+                    var y = r.top - pad;
+                    var w = r.width + 2 * pad;
+                    var h = r.height + 2 * pad;
+                    x = Math.max(0, Math.min(x, vw - 16));
+                    y = Math.max(0, Math.min(y, vh - 16));
+                    w = Math.max(16, Math.min(w, vw - x));
+                    h = Math.max(16, Math.min(h, vh - y));
+                    var outer = 'M0,0 L' + vw + ',0 L' + vw + ',' + vh + ' L0,' + vh + ' Z';
+                    var inner = 'M' + x + ',' + y + ' L' + (x + w) + ',' + y + ' L' + (x + w) + ',' + (y + h) + ' L' + x + ',' + (y + h) + ' Z';
+                    spotlightPath.setAttribute('d', outer + ' ' + inner);
+                }
+
+                function onTourLayoutChanged() {
+                    if (root.classList.contains('layout-tour-hidden')) return;
+                    if (currentHoleEl) updateSpotlightPath(currentHoleEl);
+                }
+
+                function attachTourLayoutListeners() {
+                    if (tourLayoutListenersAttached) return;
+                    tourLayoutListenersAttached = true;
+                    window.addEventListener('resize', onTourLayoutChanged);
+                    if (tourAspect) tourAspect.addEventListener('scroll', onTourLayoutChanged, { passive: true });
+                }
+
+                function detachTourLayoutListeners() {
+                    if (!tourLayoutListenersAttached) return;
+                    tourLayoutListenersAttached = false;
+                    window.removeEventListener('resize', onTourLayoutChanged);
+                    if (tourAspect) tourAspect.removeEventListener('scroll', onTourLayoutChanged);
+                }
 
                 function getTourAnchorCell() {
                     var cells = Array.prototype.slice.call(document.querySelectorAll('.grid-cell:not(.hidden)'));
@@ -1696,57 +1787,111 @@ var currentDesktopWidth = 0;
                     highlightedEl = null;
                 }
 
-                function visibleExpandButton(cell) {
-                    if (!cell) return null;
-                    var right = cell.querySelector('.expand-btn.expand-right');
-                    var down = cell.querySelector('.expand-btn.expand-down');
-                    function shown(btn) {
-                        if (!btn) return false;
-                        if (btn.offsetParent === null) return false;
-                        var st = window.getComputedStyle(btn);
-                        return st.display !== 'none' && st.visibility !== 'hidden';
-                    }
-                    if (shown(right)) return right;
-                    if (shown(down)) return down;
-                    return right || down;
-                }
-
-                function settingsGearButton(cell) {
-                    if (!cell) return null;
-                    return cell.querySelector('.cell-slot-config-btn:not(.cell-slot-config-btn-hidden)');
-                }
-
                 var steps = [
                     {
-                        title: 'Welcome',
-                        body: 'This short guide walks you through adding a module to a cell, making the cell larger, and opening module settings. Use Skip any time if you already know the layout editor.',
+                        title: 'Setup Tutorial',
+                        body: 'This short guide walks you through the basic cell setup, layout, and configuation. Use Skip any time if you already know the layout editor.',
                         highlight: function() { return null; }
                     },
                     {
-                        title: 'Choose a module',
-                        body: 'Each grid cell can show one module (or several that rotate). Open the module list in the highlighted cell and pick what you want, for example Clock or Callsign.',
+                        interactiveMode: 'expand-right',
+                        title: 'Expand across',
+                        body: 'Other controls are disabled for this step. Click the right arrow (→) on the highlighted cell to merge with the column to the right and make the cell wider.',
+                        highlight: function(cell) {
+                            return cell ? cell.querySelector('.expand-btn.expand-right') : null;
+                        }
+                    },
+                    {
+                        interactiveMode: 'expand-down',
+                        title: 'Expand downward',
+                        body: 'Now only the down arrow (↓) works. Click it once to merge with the row below so the cell is taller.',
+                        highlight: function(cell) {
+                            return cell ? cell.querySelector('.expand-btn.expand-down') : null;
+                        }
+                    },
+                    {
+                        interactiveMode: 'contract-left',
+                        title: 'Shrink across',
+                        body: 'Click the left arrow (←) to split off the rightmost column and return the cell to a single column width.',
+                        highlight: function(cell) {
+                            return cell ? cell.querySelector('.contract-btn.contract-left') : null;
+                        }
+                    },
+                    {
+                        interactiveMode: 'contract-top',
+                        title: 'Shrink upward',
+                        body: 'Click the up arrow (↑) to split off the bottom row and return this cell to a single row height.',
+                        highlight: function(cell) {
+                            return cell ? cell.querySelector('.contract-btn.contract-top') : null;
+                        }
+                    },
+                    {
+                        interactivePick: { slot: 0, moduleId: 'clock' },
+                        title: 'Digital clock',
+                        body: 'Open the first Module list in the highlighted cell and choose Clock (digital local and UTC times). Other controls stay disabled until you select it.',
                         highlight: function(cell) {
                             if (!cell) return null;
-                            return cell.querySelector('.cell-slot-module-select');
+                            var r = cell.querySelectorAll('.cell-module-slot-row')[0];
+                            return r ? r.querySelector('.cell-slot-module-select') : null;
                         }
                     },
                     {
-                        title: 'Resize the cell',
-                        body: 'Use the arrow buttons on the edge of the cell to merge with the neighbor on the right or below. That gives your module more space on the dashboard.',
+                        interactivePick: { slot: 1, moduleId: 'analog_clock' },
+                        title: 'Analog clock',
+                        body: 'A second row was added after your first choice. Open the second Module list and choose Analog clock. The dashboard will rotate between the digital and analog clocks in this cell.',
                         highlight: function(cell) {
-                            return visibleExpandButton(cell);
+                            if (!cell) return null;
+                            var rows = cell.querySelectorAll('.cell-module-slot-row');
+                            var r = rows[1];
+                            return r ? r.querySelector('.cell-slot-module-select') : null;
                         }
                     },
                     {
-                        title: 'Module settings',
-                        body: 'After you pick a module, click the gear icon next to it to change its options. If you do not see a gear, pick a different module that has settings. Close the panel when you are done.',
+                        title: 'Rotation timing',
+                        body: 'When this cell has more than one module, Rotate every (sec) sets how long each module stays visible before switching to the next. The value is in seconds (5 to 86400). Longer times keep each screen up for a slower tour through your modules.',
                         highlight: function(cell) {
-                            return settingsGearButton(cell);
+                            return cell ? cell.querySelector('.cell-rotate-seconds') : null;
                         }
                     },
                     {
+                        title: 'Switch animation',
+                        body: 'Change animation picks how the cell transitions when it moves from one module to the next, for example Fade, Zoom, Slide, or Flip. It only applies when you have more than one module in this cell.',
+                        highlight: function(cell) {
+                            return cell ? cell.querySelector('.cell-rotate-animation') : null;
+                        }
+                    },
+                    {
+                        interactiveMode: 'tour-clock-gear',
+                        title: 'Open Clock settings',
+                        body: 'Click the gear (⚙) beside the first row (Clock) to open its configuration panel.',
+                        highlight: function(cell) {
+                            if (!cell) return null;
+                            var r = cell.querySelectorAll('.cell-module-slot-row')[0];
+                            if (!r) return null;
+                            return r.querySelector('.cell-slot-config-btn:not(.cell-slot-config-btn-hidden)');
+                        }
+                    },
+                    {
+                        interactiveMode: 'tour-clock-show-date',
+                        title: 'Change a clock option',
+                        body: 'Find Show date and set it to On so the digital clock can show the date as well as the time.',
+                        highlight: function() {
+                            var body = document.getElementById('layout-cell-settings-modal-body');
+                            return body ? body.querySelector('select[name$="__show_date"]') : null;
+                        }
+                    },
+                    {
+                        interactiveMode: 'tour-close-settings',
+                        title: 'Close settings',
+                        body: 'Click the X in the corner or the dark backdrop outside the panel to close it and return to the grid.',
+                        highlight: function() {
+                            return document.getElementById('layout-cell-settings-modal-close');
+                        }
+                    },
+                    {
+                        interactiveMode: 'tour-save-layout',
                         title: 'Save your layout',
-                        body: 'When you are happy with the grid, click Save Layout to apply it. You can reopen the layout editor any time from the menu.',
+                        body: 'Click Save Layout to store the grid and module options (including Show date) on the server. You will go to the main dashboard.',
                         highlight: function() {
                             return document.getElementById('save-button');
                         }
@@ -1776,9 +1921,236 @@ var currentDesktopWidth = 0;
                     } catch (e) {}
                 }
 
+                function clearTourInteractionLocks() {
+                    document.querySelectorAll('.layout-tour-locked').forEach(function(el) {
+                        el.classList.remove('layout-tour-locked');
+                    });
+                    document.querySelectorAll('.layout-tour-target-btn').forEach(function(el) {
+                        el.classList.remove('layout-tour-target-btn');
+                    });
+                }
+
+                function applyTourInteractionLocks(step) {
+                    clearTourInteractionLocks();
+                    if (!step) return;
+                    var cell = getTourAnchorCell();
+                    var lockSel = '#save-button, .cell-slot-module-select, .cell-rotate-seconds, .cell-rotate-animation, .cell-slot-move-up, .cell-slot-move-down, .cell-slot-remove, .cell-slot-config-btn, .expand-btn, .contract-btn';
+                    if (step.interactivePick) {
+                        document.querySelectorAll(lockSel).forEach(function(el) {
+                            el.classList.add('layout-tour-locked');
+                        });
+                        var rows = cell ? cell.querySelectorAll('.cell-module-slot-row') : [];
+                        var targetRow = rows[step.interactivePick.slot];
+                        var selUnlock = targetRow ? targetRow.querySelector('.cell-slot-module-select') : null;
+                        if (selUnlock) {
+                            selUnlock.classList.remove('layout-tour-locked');
+                            selUnlock.classList.add('layout-tour-target-btn');
+                        }
+                        return;
+                    }
+                    if (!step.interactiveMode) return;
+                    document.querySelectorAll(lockSel).forEach(function(el) {
+                        el.classList.add('layout-tour-locked');
+                    });
+                    var btn = null;
+                    if (cell) {
+                        if (step.interactiveMode === 'expand-right') btn = cell.querySelector('.expand-btn.expand-right');
+                        else if (step.interactiveMode === 'expand-down') btn = cell.querySelector('.expand-btn.expand-down');
+                        else if (step.interactiveMode === 'contract-left') btn = cell.querySelector('.contract-btn.contract-left');
+                        else if (step.interactiveMode === 'contract-top') btn = cell.querySelector('.contract-btn.contract-top');
+                    }
+                    if (btn) {
+                        btn.classList.remove('layout-tour-locked');
+                        btn.classList.add('layout-tour-target-btn');
+                    }
+                    if (step.interactiveMode === 'tour-clock-gear') {
+                        var rowG = cell ? cell.querySelectorAll('.cell-module-slot-row')[0] : null;
+                        var gearBtn = rowG ? rowG.querySelector('.cell-slot-config-btn:not(.cell-slot-config-btn-hidden)') : null;
+                        if (gearBtn) {
+                            gearBtn.classList.remove('layout-tour-locked');
+                            gearBtn.classList.add('layout-tour-target-btn');
+                        }
+                        return;
+                    }
+                    if (step.interactiveMode === 'tour-close-settings') {
+                        var bodyClose = document.querySelector('.layout-cell-settings-modal-body');
+                        if (bodyClose) bodyClose.classList.add('layout-tour-locked');
+                        return;
+                    }
+                    if (step.interactiveMode === 'tour-save-layout') {
+                        var saveBtnOnly = document.getElementById('save-button');
+                        if (saveBtnOnly) {
+                            saveBtnOnly.classList.remove('layout-tour-locked');
+                            saveBtnOnly.classList.add('layout-tour-target-btn');
+                        }
+                        return;
+                    }
+                }
+
+                function tourClickCapture(e) {
+                    if (root.classList.contains('layout-tour-hidden')) return;
+                    var step = steps[stepIndex];
+                    if (!step) return;
+                    if (step.interactivePick) {
+                        var tp = e.target;
+                        if (tp.closest && tp.closest('.layout-tour-panel')) return;
+                        var cellPick = getTourAnchorCell();
+                        var rowsPick = cellPick ? cellPick.querySelectorAll('.cell-module-slot-row') : [];
+                        var allowedSel = rowsPick[step.interactivePick.slot] && rowsPick[step.interactivePick.slot].querySelector('.cell-slot-module-select');
+                        if (allowedSel && (tp === allowedSel || allowedSel.contains(tp))) return;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.stopImmediatePropagation();
+                        return;
+                    }
+                    if (!step.interactiveMode) return;
+                    var t = e.target;
+                    if (t.closest && t.closest('.layout-tour-panel')) return;
+                    var mode = step.interactiveMode;
+                    if (mode === 'tour-clock-gear') {
+                        var cellCg = getTourAnchorCell();
+                        var rowsCg = cellCg ? cellCg.querySelectorAll('.cell-module-slot-row') : [];
+                        var row0Cg = rowsCg[0];
+                        var gearAllowed = row0Cg && row0Cg.querySelector('.cell-slot-config-btn:not(.cell-slot-config-btn-hidden)');
+                        var sel0Cg = row0Cg && row0Cg.querySelector('.cell-slot-module-select');
+                        if (gearAllowed && sel0Cg && sel0Cg.value === 'clock' && (t === gearAllowed || gearAllowed.contains(t))) {
+                            var gearStepIdx = stepIndex;
+                            window.setTimeout(function() {
+                                var modalG = document.getElementById('layout-cell-settings-modal');
+                                if (root.classList.contains('layout-tour-hidden')) return;
+                                if (stepIndex !== gearStepIdx) return;
+                                if (modalG && modalG.classList.contains('open')) {
+                                    stepIndex++;
+                                    applyStep();
+                                }
+                            }, 0);
+                            return;
+                        }
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.stopImmediatePropagation();
+                        return;
+                    }
+                    if (mode === 'tour-clock-show-date') {
+                        var modalSd = document.getElementById('layout-cell-settings-modal');
+                        if (modalSd && modalSd.classList.contains('open') && modalSd.contains(t)) return;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.stopImmediatePropagation();
+                        return;
+                    }
+                    if (mode === 'tour-close-settings') {
+                        if (t.id === 'layout-cell-settings-modal-close' || (t.classList && t.classList.contains('layout-cell-settings-modal-backdrop')) ||
+                            (t.closest && t.closest('#layout-cell-settings-modal-close'))) {
+                            var closeStepIdx = stepIndex;
+                            window.setTimeout(function() {
+                                var modalC = document.getElementById('layout-cell-settings-modal');
+                                if (root.classList.contains('layout-tour-hidden')) return;
+                                if (stepIndex !== closeStepIdx) return;
+                                if (!modalC || !modalC.classList.contains('open')) {
+                                    stepIndex++;
+                                    applyStep();
+                                }
+                            }, 150);
+                            return;
+                        }
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.stopImmediatePropagation();
+                        return;
+                    }
+                    if (mode === 'tour-save-layout') {
+                        var saveEl = document.getElementById('save-button');
+                        if (saveEl && (t === saveEl || saveEl.contains(t))) return;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.stopImmediatePropagation();
+                        return;
+                    }
+                    var ok = false;
+                    if (t.classList && t.classList.contains('expand-btn')) {
+                        if (mode === 'expand-right' && t.classList.contains('expand-right')) ok = true;
+                        if (mode === 'expand-down' && t.classList.contains('expand-down')) ok = true;
+                    }
+                    if (t.classList && t.classList.contains('contract-btn') && !t.classList.contains('contract-disabled')) {
+                        if (mode === 'contract-left' && t.classList.contains('contract-left')) ok = true;
+                        if (mode === 'contract-top' && t.classList.contains('contract-top')) ok = true;
+                    }
+                    if (!ok) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.stopImmediatePropagation();
+                    }
+                }
+
+                function tourPickChangeHandler(e) {
+                    if (root.classList.contains('layout-tour-hidden')) return;
+                    var stPick = steps[stepIndex];
+                    if (!stPick || !stPick.interactivePick) return;
+                    var targ = e.target;
+                    if (!targ.classList || !targ.classList.contains('cell-slot-module-select')) return;
+                    var cellCh = getTourAnchorCell();
+                    if (!cellCh || !cellCh.contains(targ)) return;
+                    var rowsCh = cellCh.querySelectorAll('.cell-module-slot-row');
+                    var rowElCh = targ.closest('.cell-module-slot-row');
+                    var slotIdxCh = Array.prototype.indexOf.call(rowsCh, rowElCh);
+                    if (slotIdxCh !== stPick.interactivePick.slot) return;
+                    if (targ.value !== stPick.interactivePick.moduleId) return;
+                    var pickIdx = stepIndex;
+                    window.setTimeout(function() {
+                        if (root.classList.contains('layout-tour-hidden')) return;
+                        if (stepIndex !== pickIdx) return;
+                        if (steps[stepIndex] !== stPick) return;
+                        stepIndex++;
+                        applyStep();
+                    }, 0);
+                }
+
+                function tourClockShowDateChange(e) {
+                    if (root.classList.contains('layout-tour-hidden')) return;
+                    var stSd = steps[stepIndex];
+                    if (!stSd || stSd.interactiveMode !== 'tour-clock-show-date') return;
+                    var targSd = e.target;
+                    if (!targSd || !targSd.name || !/__show_date$/.test(targSd.name)) return;
+                    if (!/__slot_0__show_date$/.test(targSd.name)) return;
+                    var modalSd = document.getElementById('layout-cell-settings-modal');
+                    if (!modalSd || !modalSd.classList.contains('open') || !modalSd.contains(targSd)) return;
+                    if (targSd.value !== '1') return;
+                    var idxSd = stepIndex;
+                    window.setTimeout(function() {
+                        if (root.classList.contains('layout-tour-hidden')) return;
+                        if (stepIndex !== idxSd) return;
+                        stepIndex++;
+                        applyStep();
+                    }, 0);
+                }
+
+                function tourDocumentChange(e) {
+                    tourPickChangeHandler(e);
+                    tourClockShowDateChange(e);
+                }
+
                 function endTour() {
                     persistTourSeen();
+                    document.removeEventListener('click', tourClickCapture, true);
+                    document.removeEventListener('change', tourDocumentChange, false);
+                    window._layoutTourOnLayoutChange = null;
+                    window._layoutTourShouldBlockGear = null;
+                    window._layoutTourNotifySaveStart = null;
+                    detachTourLayoutListeners();
+                    clearTourInteractionLocks();
+                    try {
+                        if (stepIndex >= 1 && stepIndex <= 4) {
+                            var anchorEarly = getTourAnchorCell();
+                            if (anchorEarly) {
+                                var rowE = parseInt(anchorEarly.getAttribute('data-row'), 10) || 0;
+                                var colE = parseInt(anchorEarly.getAttribute('data-col'), 10) || 0;
+                                resetCellExpansion(rowE, colE);
+                            }
+                        }
+                    } catch (e) {}
                     clearHighlight();
+                    currentHoleEl = null;
                     root.classList.add('layout-tour-hidden');
                     root.setAttribute('aria-hidden', 'true');
                     document.body.classList.remove('layout-tour-active');
@@ -1795,21 +2167,85 @@ var currentDesktopWidth = 0;
                     }
                     titleEl.textContent = step.title;
                     bodyEl.textContent = step.body;
-                    btnBack.style.display = stepIndex > 0 ? '' : 'none';
+                    btnBack.style.display = (stepIndex >= 6 && stepIndex < 9) ? '' : 'none';
+                    btnNext.style.display = (step.interactiveMode || step.interactivePick) ? 'none' : '';
                     btnNext.textContent = stepIndex >= steps.length - 1 ? 'Done' : 'Next';
 
-                    var cell = stepIndex === steps.length - 1 ? null : getTourAnchorCell();
+                    var isSaveOnlyStep = stepIndex === steps.length - 1;
+                    var cell = isSaveOnlyStep ? null : getTourAnchorCell();
                     var target = step.highlight(cell);
+
+                    var holeEl = null;
+                    if (stepIndex === 0) {
+                        holeEl = null;
+                    } else if (isSaveOnlyStep) {
+                        holeEl = target;
+                    } else if (step.interactiveMode === 'tour-clock-show-date' || step.interactiveMode === 'tour-close-settings') {
+                        var modSpot = document.getElementById('layout-cell-settings-modal');
+                        holeEl = modSpot && modSpot.querySelector('.layout-cell-settings-modal-panel');
+                    } else {
+                        holeEl = cell || target;
+                    }
+                    currentHoleEl = holeEl;
+
+                    if (holeEl) {
+                        try {
+                            holeEl.scrollIntoView({ block: 'center', inline: 'center', behavior: 'auto' });
+                        } catch (e) {
+                            try { holeEl.scrollIntoView(); } catch (e2) {}
+                        }
+                    }
+
+                    updateSpotlightPath(holeEl);
+
                     if (target && target.classList) {
                         highlightedEl = target;
                         target.classList.add('layout-tour-pulse');
-                        try {
-                            target.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
-                        } catch (e) {
-                            try { target.scrollIntoView(); } catch (e2) {}
+                    }
+
+                    applyTourInteractionLocks(step);
+
+                    if (step.interactivePick && cell) {
+                        var rowsAuto = cell.querySelectorAll('.cell-module-slot-row');
+                        var selAuto = rowsAuto[step.interactivePick.slot] && rowsAuto[step.interactivePick.slot].querySelector('.cell-slot-module-select');
+                        if (selAuto && selAuto.value === step.interactivePick.moduleId) {
+                            var curPickIdx = stepIndex;
+                            window.setTimeout(function() {
+                                if (root.classList.contains('layout-tour-hidden')) return;
+                                if (stepIndex !== curPickIdx) return;
+                                if (steps[stepIndex] !== step) return;
+                                stepIndex++;
+                                applyStep();
+                            }, 0);
+                        }
+                    }
+                    if (step.interactiveMode === 'tour-clock-show-date') {
+                        var bodySd = document.getElementById('layout-cell-settings-modal-body');
+                        var selSd = bodySd ? bodySd.querySelector('select[name$="__show_date"]') : null;
+                        if (selSd && selSd.value === '1' && /__slot_0__show_date$/.test(selSd.name || '')) {
+                            var curSdIdx = stepIndex;
+                            window.setTimeout(function() {
+                                if (root.classList.contains('layout-tour-hidden')) return;
+                                if (stepIndex !== curSdIdx) return;
+                                if (steps[stepIndex] !== step) return;
+                                stepIndex++;
+                                applyStep();
+                            }, 0);
                         }
                     }
                 }
+
+                window._layoutTourOnLayoutChange = function(detail) {
+                    if (root.classList.contains('layout-tour-hidden')) return;
+                    var st = steps[stepIndex];
+                    if (!st || !st.interactiveMode || !detail) return;
+                    var mode = detail.action === 'expand'
+                        ? 'expand-' + detail.direction
+                        : 'contract-' + detail.direction;
+                    if (mode !== st.interactiveMode) return;
+                    stepIndex++;
+                    applyStep();
+                };
 
                 window._layoutTourOnEscape = function() {
                     if (root.classList.contains('layout-tour-hidden')) return false;
@@ -1819,7 +2255,7 @@ var currentDesktopWidth = 0;
 
                 btnSkip.addEventListener('click', function() { endTour(); });
                 btnBack.addEventListener('click', function() {
-                    if (stepIndex > 0) {
+                    if (stepIndex >= 6 && stepIndex < 9 && stepIndex > 0) {
                         stepIndex -= 1;
                         applyStep();
                     }
@@ -1833,9 +2269,30 @@ var currentDesktopWidth = 0;
                     applyStep();
                 });
 
+                window._layoutTourShouldBlockGear = function(cell, sr, btn) {
+                    if (root.classList.contains('layout-tour-hidden')) return false;
+                    var stg = steps[stepIndex];
+                    if (!stg || stg.interactiveMode !== 'tour-clock-gear') return false;
+                    var anchorG = getTourAnchorCell();
+                    if (!anchorG || cell !== anchorG) return true;
+                    var rowsG = anchorG.querySelectorAll('.cell-module-slot-row');
+                    if (!rowsG[0] || sr !== rowsG[0]) return true;
+                    var selG = rowsG[0].querySelector('.cell-slot-module-select');
+                    if (!selG || selG.value !== 'clock') return true;
+                    return false;
+                };
+                window._layoutTourNotifySaveStart = function() {
+                    var wasOnSaveStep = !root.classList.contains('layout-tour-hidden') && steps[stepIndex] && steps[stepIndex].interactiveMode === 'tour-save-layout';
+                    endTour();
+                    return wasOnSaveStep;
+                };
+
+                document.addEventListener('click', tourClickCapture, true);
+                document.addEventListener('change', tourDocumentChange, false);
                 root.classList.remove('layout-tour-hidden');
                 root.setAttribute('aria-hidden', 'false');
                 document.body.classList.add('layout-tour-active');
+                attachTourLayoutListeners();
                 applyStep();
             })();
 

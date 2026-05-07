@@ -1,5 +1,63 @@
 /* GlanceRF main display - WebSocket sync for desktop/browser mirroring */
 
+(function showFinalTourMessage() {
+  try {
+    var path = window.location.pathname || '';
+    if (path !== '/' && path !== '') return;
+    var flag = sessionStorage.getItem('glancerf_show_final_tour_msg');
+    if (flag !== '1') return;
+    sessionStorage.removeItem('glancerf_show_final_tour_msg');
+  } catch (e) { return; }
+
+  function build() {
+    if (document.getElementById('glancerf-final-tour-msg')) return;
+    var root = document.createElement('div');
+    root.id = 'glancerf-final-tour-msg';
+    root.className = 'glancerf-final-tour-root';
+    root.setAttribute('role', 'dialog');
+    root.setAttribute('aria-modal', 'true');
+    root.setAttribute('aria-labelledby', 'glancerf-final-tour-title');
+    root.innerHTML = ''
+      + '<div class="glancerf-final-tour-backdrop"></div>'
+      + '<div class="glancerf-final-tour-panel">'
+      + '  <h2 class="glancerf-final-tour-title" id="glancerf-final-tour-title">All set</h2>'
+      + '  <p class="glancerf-final-tour-body">Your dashboard is live. To open the menu and change settings, modules, or the layout later:</p>'
+      + '  <ul class="glancerf-final-tour-list">'
+      + '    <li>Press <strong>M</strong> on the keyboard, or</li>'
+      + '    <li><strong>Right-click</strong> anywhere on the dashboard.</li>'
+      + '  </ul>'
+      + '  <p class="glancerf-final-tour-body">From the menu you can return to <strong>Setup</strong>, the <strong>Layout &amp; Config editor</strong>, the <strong>Modules list</strong>, or run <strong>Manual Updates</strong>.</p>'
+      + '  <div class="glancerf-final-tour-actions">'
+      + '    <button type="button" class="glancerf-final-tour-btn" id="glancerf-final-tour-ok">Got it</button>'
+      + '  </div>'
+      + '</div>';
+    document.body.appendChild(root);
+
+    function close() {
+      if (root.parentNode) root.parentNode.removeChild(root);
+      document.removeEventListener('keydown', onKey, true);
+    }
+    function onKey(e) {
+      if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        close();
+      }
+    }
+    var btn = root.querySelector('#glancerf-final-tour-ok');
+    if (btn) btn.addEventListener('click', close);
+    var backdrop = root.querySelector('.glancerf-final-tour-backdrop');
+    if (backdrop) backdrop.addEventListener('click', close);
+    document.addEventListener('keydown', onKey, true);
+    if (btn) try { btn.focus(); } catch (e) {}
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', build);
+  } else {
+    build();
+  }
+})();
+
 (function () {
   'use strict';
 
