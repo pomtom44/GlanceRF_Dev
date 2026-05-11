@@ -542,6 +542,10 @@ body {
     z-index: 2400;
     pointer-events: none;
 }
+/* Module settings modal is 2500; without this the tour panel and spotlight sit underneath and the module step feels broken */
+body.layout-tour-modal-step .layout-tour-root {
+    z-index: 2600;
+}
 .layout-tour-root.layout-tour-hidden {
     display: none;
 }
@@ -549,7 +553,9 @@ body {
     position: fixed;
     inset: 0;
     z-index: 0;
-    pointer-events: auto;
+    /* Must not capture hits: even-odd "hole" hit-testing is unreliable (e.g. Qt WebEngine),
+       which left the dim layer blocking expand/contract arrows under the cell. */
+    pointer-events: none;
     opacity: 0;
     transition: opacity 0.35s ease;
 }
@@ -557,6 +563,11 @@ body {
     opacity: 1;
 }
 .layout-tour-spotlight-path {
+    pointer-events: none;
+}
+/* Welcome step: full-screen mask should block the grid until Next (no interactive hole yet) */
+.layout-tour-root.layout-tour-welcome-step .layout-tour-spotlight-svg,
+.layout-tour-root.layout-tour-welcome-step .layout-tour-spotlight-path {
     pointer-events: auto;
 }
 .layout-tour-panel {
@@ -577,10 +588,15 @@ body {
     padding: 14px 16px 16px;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
 }
+.layout-tour-panel.layout-tour-panel-docked {
+    transform: none;
+    margin: 0;
+    transition: left 0.2s ease, top 0.2s ease, width 0.2s ease;
+}
 .layout-tour-title {
-    font-size: 15px;
+    font-size: 18px;
     color: #0f0;
-    margin: 0 0 8px 0;
+    margin: 0 0 10px 0;
     font-weight: bold;
 }
 .layout-tour-body {
@@ -588,6 +604,10 @@ body {
     line-height: 1.45;
     color: #c9d1d9;
     margin: 0 0 14px 0;
+}
+.layout-tour-body .layout-tour-try-label {
+    color: #0f0;
+    font-size: inherit;
 }
 .layout-tour-actions {
     display: flex;
@@ -627,8 +647,24 @@ body {
     outline: 3px solid #ff0 !important;
     outline-offset: 2px;
     box-shadow: 0 0 0 4px rgba(255, 255, 0, 0.35);
-    position: relative;
-    z-index: 15;
+    z-index: 25 !important;
+}
+
+/* Anchor cell stays full brightness; other cells fade (after welcome) so the spotlight reads clearly */
+body.layout-tour-active.layout-tour-dim-non-anchor .grid-cell:not(.layout-tour-anchor-cell) {
+    opacity: 0.42;
+    transition: opacity 0.2s ease;
+}
+body.layout-tour-active.layout-tour-dim-non-anchor .grid-cell.layout-tour-anchor-cell {
+    opacity: 1;
+}
+
+/* Inside the anchor cell, locked controls stay visually normal; only the target action gets the yellow ring */
+.grid-cell.layout-tour-anchor-cell .layout-tour-locked:not(.layout-tour-target-btn) {
+    opacity: 1 !important;
+    filter: none !important;
+    pointer-events: none !important;
+    cursor: default !important;
 }
 
 .layout-tour-locked {
@@ -643,6 +679,23 @@ body {
     pointer-events: auto !important;
     cursor: pointer !important;
     filter: none;
+}
+
+/* Tour: module pick steps — only the required module stays enabled; list stays visible */
+select.layout-tour-pick-restricted option[disabled] {
+    opacity: 0.55;
+    color: #666;
+}
+select.layout-tour-pick-restricted:focus option:not([disabled]),
+select.layout-tour-pick-restricted.layout-tour-pick-select-active option:not([disabled]) {
+    background: #0a2a0a;
+    color: #0f0;
+    font-weight: bold;
+}
+select.layout-tour-pick-restricted.layout-tour-pick-select-active,
+select.layout-tour-pick-restricted:focus {
+    outline: 2px solid #ff0;
+    outline-offset: 2px;
 }
 
 .layout-cell-settings-modal-body.layout-tour-locked {

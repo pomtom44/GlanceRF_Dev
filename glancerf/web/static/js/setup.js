@@ -161,6 +161,7 @@
   }
 
   bindSetupNavButton('setup-welcome-next', 2);
+  bindSetupNavButton('setup-hardware-back', 1);
   bindSetupNavButton('setup-hardware-next', 3);
   bindSetupNavButton('setup-station-next', 4);
   bindSetupNavButton('setup-layout-next', 5);

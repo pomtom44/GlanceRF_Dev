@@ -1719,6 +1719,32 @@ var currentDesktopWidth = 0;
                 var currentHoleEl = null;
                 var tourFinished = false;
                 var tourLayoutListenersAttached = false;
+                var tourResizeObserver = null;
+                var tourPanelAnchorEl = null;
+                var tourPanelPlacementOrder = null;
+                var tourModulePickRestrictCleanup = null;
+
+                function detachTourResizeObserver() {
+                    if (tourResizeObserver) {
+                        try { tourResizeObserver.disconnect(); } catch (e) {}
+                        tourResizeObserver = null;
+                    }
+                }
+
+                function attachTourResizeObserver(el) {
+                    detachTourResizeObserver();
+                    if (!el || typeof ResizeObserver === 'undefined') return;
+                    tourResizeObserver = new ResizeObserver(function () {
+                        if (root.classList.contains('layout-tour-hidden')) return;
+                        updateSpotlightPath(el);
+                        repositionTourPanel();
+                    });
+                    try {
+                        tourResizeObserver.observe(el, { box: 'border-box' });
+                    } catch (e) {
+                        tourResizeObserver.observe(el);
+                    }
+                }
 
                 function updateSpotlightPath(el) {
                     if (!spotlightPath || !spotlightSvg) return;
@@ -1737,20 +1763,120 @@ var currentDesktopWidth = 0;
                     var pad = 14;
                     var x = r.left - pad;
                     var y = r.top - pad;
-                    var w = r.width + 2 * pad;
-                    var h = r.height + 2 * pad;
-                    x = Math.max(0, Math.min(x, vw - 16));
-                    y = Math.max(0, Math.min(y, vh - 16));
-                    w = Math.max(16, Math.min(w, vw - x));
-                    h = Math.max(16, Math.min(h, vh - y));
+                    var w = Math.max(16, r.width + 2 * pad);
+                    var h = Math.max(16, r.height + 2 * pad);
                     var outer = 'M0,0 L' + vw + ',0 L' + vw + ',' + vh + ' L0,' + vh + ' Z';
                     var inner = 'M' + x + ',' + y + ' L' + (x + w) + ',' + y + ' L' + (x + w) + ',' + (y + h) + ' L' + x + ',' + (y + h) + ' Z';
                     spotlightPath.setAttribute('d', outer + ' ' + inner);
                 }
 
+                function tourClampPanel(n, lo, hi) {
+                    return Math.max(lo, Math.min(hi, n));
+                }
+
+                function tourPanelCornerForSide(ar, pw, ph, side, gap) {
+                    switch (side) {
+                        case 'east':
+                            return { x: ar.right + gap, y: ar.top + (ar.height - ph) / 2 };
+                        case 'west':
+                            return { x: ar.left - gap - pw, y: ar.top + (ar.height - ph) / 2 };
+                        case 'south':
+                            return { x: ar.left + (ar.width - pw) / 2, y: ar.bottom + gap };
+                        case 'north':
+                            return { x: ar.left + (ar.width - pw) / 2, y: ar.top - gap - ph };
+                        default:
+                            return { x: ar.right + gap, y: ar.top + (ar.height - ph) / 2 };
+                    }
+                }
+
+                function getTourPanelPlacementOrder(step) {
+                    if (!step) return ['east', 'south', 'west', 'north'];
+                    if (step.interactiveMode === 'expand-right') return ['east', 'west', 'south', 'north'];
+                    if (step.interactiveMode === 'contract-left') return ['west', 'east', 'south', 'north'];
+                    if (step.interactiveMode === 'expand-down') return ['south', 'north', 'east', 'west'];
+                    if (step.interactiveMode === 'contract-top') return ['north', 'south', 'east', 'west'];
+                    if (step.interactiveMode === 'tour-save-layout') return ['north', 'east', 'west', 'south'];
+                    if (step.interactiveMode === 'tour-clock-show-date' || step.interactiveMode === 'tour-close-settings') {
+                        return ['north', 'south', 'east', 'west'];
+                    }
+                    if (step.interactiveMode === 'tour-clock-gear') return ['east', 'south', 'west', 'north'];
+                    return ['east', 'south', 'west', 'north'];
+                }
+
+                function resetTourPanelLayout() {
+                    var panel = root && root.querySelector('.layout-tour-panel');
+                    if (!panel) return;
+                    panel.classList.remove('layout-tour-panel-docked');
+                    panel.style.left = '';
+                    panel.style.top = '';
+                    panel.style.width = '';
+                    panel.style.transform = '';
+                    tourPanelAnchorEl = null;
+                    tourPanelPlacementOrder = null;
+                }
+
+                function repositionTourPanel() {
+                    var panel = root && root.querySelector('.layout-tour-panel');
+                    if (!panel || root.classList.contains('layout-tour-hidden')) return;
+                    if (!tourPanelAnchorEl || typeof tourPanelAnchorEl.getBoundingClientRect !== 'function') {
+                        resetTourPanelLayout();
+                        return;
+                    }
+                    var ar = tourPanelAnchorEl.getBoundingClientRect();
+                    if (ar.width < 1 && ar.height < 1) {
+                        resetTourPanelLayout();
+                        return;
+                    }
+                    var vw = window.innerWidth || document.documentElement.clientWidth || 0;
+                    var vh = window.innerHeight || document.documentElement.clientHeight || 0;
+                    if (vw < 1) vw = 1;
+                    if (vh < 1) vh = 1;
+                    var PAD = 12;
+                    var GAP = 14;
+                    var dockW = Math.min(420, Math.max(280, vw - PAD * 2));
+                    panel.classList.add('layout-tour-panel-docked');
+                    panel.style.transform = 'none';
+                    panel.style.width = dockW + 'px';
+                    var pr = panel.getBoundingClientRect();
+                    var pw = pr.width || dockW;
+                    var ph = pr.height || 120;
+                    var order = tourPanelPlacementOrder || ['east', 'south', 'west', 'north'];
+                    var best = null;
+                    var bestScore = -1e9;
+                    var i;
+                    for (i = 0; i < order.length; i++) {
+                        var side = order[i];
+                        var c = tourPanelCornerForSide(ar, pw, ph, side, GAP);
+                        var x = tourClampPanel(c.x, PAD, vw - pw - PAD);
+                        var y = tourClampPanel(c.y, PAD, vh - ph - PAD);
+                        var fits = (c.x === x && c.y === y) ? 1000 : 0;
+                        var score = fits - i * 2 - Math.abs(x - c.x) * 0.5 - Math.abs(y - c.y) * 0.5;
+                        if (score > bestScore) {
+                            bestScore = score;
+                            best = { x: x, y: y };
+                        }
+                    }
+                    if (best) {
+                        panel.style.left = Math.round(best.x) + 'px';
+                        panel.style.top = Math.round(best.y) + 'px';
+                    }
+                }
+
+                function scheduleTourPanelPosition(anchorEl, step) {
+                    tourPanelAnchorEl = anchorEl || null;
+                    tourPanelPlacementOrder = getTourPanelPlacementOrder(step);
+                    window.requestAnimationFrame(function () {
+                        window.requestAnimationFrame(function () {
+                            if (root.classList.contains('layout-tour-hidden')) return;
+                            repositionTourPanel();
+                        });
+                    });
+                }
+
                 function onTourLayoutChanged() {
                     if (root.classList.contains('layout-tour-hidden')) return;
                     if (currentHoleEl) updateSpotlightPath(currentHoleEl);
+                    repositionTourPanel();
                 }
 
                 function attachTourLayoutListeners() {
@@ -1765,6 +1891,37 @@ var currentDesktopWidth = 0;
                     tourLayoutListenersAttached = false;
                     window.removeEventListener('resize', onTourLayoutChanged);
                     if (tourAspect) tourAspect.removeEventListener('scroll', onTourLayoutChanged);
+                }
+
+                function escapeTourBodyHtml(s) {
+                    return String(s)
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;');
+                }
+
+                function setTourStepBody(el, raw) {
+                    if (!el) return;
+                    var text = raw == null ? '' : String(raw);
+                    var marker = '\n\nGive it a try:\n';
+                    var idx = text.indexOf(marker);
+                    var br = function (chunk) {
+                        return escapeTourBodyHtml(chunk).replace(/\n/g, '<br>');
+                    };
+                    if (idx === -1) {
+                        el.innerHTML = br(text);
+                        return;
+                    }
+                    var before = text.slice(0, idx);
+                    var after = text.slice(idx + marker.length);
+                    el.innerHTML = br(before) + '<br><br><span class="layout-tour-try-label">Give it a try:</span><br>' + br(after);
+                }
+
+                function clearTourAnchorCellMarks() {
+                    document.querySelectorAll('.grid-cell.layout-tour-anchor-cell').forEach(function (el) {
+                        el.classList.remove('layout-tour-anchor-cell');
+                    });
                 }
 
                 function getTourAnchorCell() {
@@ -1789,46 +1946,46 @@ var currentDesktopWidth = 0;
 
                 var steps = [
                     {
-                        title: 'Setup Tutorial',
-                        body: 'This short guide walks you through the basic cell setup, layout, and configuation. Use Skip any time if you already know the layout editor.',
+                        title: 'Welcome',
+                        body: 'This quick tour shows how to resize cells, pick modules, adjust a few options, and save your layout.\n\nTap Next to begin, or Skip if you already know the editor.',
                         highlight: function() { return null; }
                     },
                     {
                         interactiveMode: 'expand-right',
-                        title: 'Expand across',
-                        body: 'Other controls are disabled for this step. Click the right arrow (→) on the highlighted cell to merge with the column to the right and make the cell wider.',
+                        title: 'Bigger cells',
+                        body: 'You can expand a cell sideways or downward so it covers more of the grid and your modules get more room.\n\nGive it a try:\nClick the right arrow (→) on this cell to make it wider.',
                         highlight: function(cell) {
                             return cell ? cell.querySelector('.expand-btn.expand-right') : null;
                         }
                     },
                     {
                         interactiveMode: 'expand-down',
-                        title: 'Expand downward',
-                        body: 'Now only the down arrow (↓) works. Click it once to merge with the row below so the cell is taller.',
+                        title: 'Taller cells',
+                        body: 'You can also grow a cell into the row below so it spans more vertical space.\n\nGive it a try:\nClick the down arrow (↓) on this cell to make it taller.',
                         highlight: function(cell) {
                             return cell ? cell.querySelector('.expand-btn.expand-down') : null;
                         }
                     },
                     {
                         interactiveMode: 'contract-left',
-                        title: 'Shrink across',
-                        body: 'Click the left arrow (←) to split off the rightmost column and return the cell to a single column width.',
+                        title: 'Narrow the cell',
+                        body: 'If you want less width, you can drop the extra column again.\n\nGive it a try:\nClick the left arrow (←) on this cell to shrink it back to one column wide.',
                         highlight: function(cell) {
                             return cell ? cell.querySelector('.contract-btn.contract-left') : null;
                         }
                     },
                     {
                         interactiveMode: 'contract-top',
-                        title: 'Shrink upward',
-                        body: 'Click the up arrow (↑) to split off the bottom row and return this cell to a single row height.',
+                        title: 'Shorten the cell',
+                        body: 'You can trim height the same way and remove an extra row.\n\nGive it a try:\nClick the up arrow (↑) on this cell to go back to one row tall.',
                         highlight: function(cell) {
                             return cell ? cell.querySelector('.contract-btn.contract-top') : null;
                         }
                     },
                     {
                         interactivePick: { slot: 0, moduleId: 'clock' },
-                        title: 'Digital clock',
-                        body: 'Open the first Module list in the highlighted cell and choose Clock (digital local and UTC times). Other controls stay disabled until you select it.',
+                        title: 'Pick a module',
+                        body: 'Each row is a slot for something from the module list.\n\nGive it a try:\nOpen the first Module menu on this cell and choose Clock for digital local and UTC time.',
                         highlight: function(cell) {
                             if (!cell) return null;
                             var r = cell.querySelectorAll('.cell-module-slot-row')[0];
@@ -1837,8 +1994,8 @@ var currentDesktopWidth = 0;
                     },
                     {
                         interactivePick: { slot: 1, moduleId: 'analog_clock' },
-                        title: 'Analog clock',
-                        body: 'A second row was added after your first choice. Open the second Module list and choose Analog clock. The dashboard will rotate between the digital and analog clocks in this cell.',
+                        title: 'Add a second view',
+                        body: 'A second row appears so you can stack another module in the same cell. The cell will swap between the two clocks on a timer.\n\nGive it a try:\nOpen the second Module menu and choose Analog clock.',
                         highlight: function(cell) {
                             if (!cell) return null;
                             var rows = cell.querySelectorAll('.cell-module-slot-row');
@@ -1847,23 +2004,23 @@ var currentDesktopWidth = 0;
                         }
                     },
                     {
-                        title: 'Rotation timing',
-                        body: 'When this cell has more than one module, Rotate every (sec) sets how long each module stays visible before switching to the next. The value is in seconds (5 to 86400). Longer times keep each screen up for a slower tour through your modules.',
+                        title: 'How long each view shows',
+                        body: 'With two modules in one cell, Rotate every (sec) is how long each view stays on screen before the next appears. Values are in seconds (5 to 86400). Lower feels snappier; higher keeps each view up longer.\n\nGive it a try:\nChange the value if you like, then tap Next.',
                         highlight: function(cell) {
                             return cell ? cell.querySelector('.cell-rotate-seconds') : null;
                         }
                     },
                     {
-                        title: 'Switch animation',
-                        body: 'Change animation picks how the cell transitions when it moves from one module to the next, for example Fade, Zoom, Slide, or Flip. It only applies when you have more than one module in this cell.',
+                        title: 'How switches look',
+                        body: 'Change animation is how the cell moves between modules (fade, zoom, slide, flip, and similar). It only applies when there is more than one module here.\n\nGive it a try:\nTry a different option if you like, then tap Next.',
                         highlight: function(cell) {
                             return cell ? cell.querySelector('.cell-rotate-animation') : null;
                         }
                     },
                     {
                         interactiveMode: 'tour-clock-gear',
-                        title: 'Open Clock settings',
-                        body: 'Click the gear (⚙) beside the first row (Clock) to open its configuration panel.',
+                        title: 'Per-module settings',
+                        body: 'Many modules have their own options.\n\nGive it a try:\nClick the gear icon beside the Clock row to open settings for that module.',
                         highlight: function(cell) {
                             if (!cell) return null;
                             var r = cell.querySelectorAll('.cell-module-slot-row')[0];
@@ -1873,8 +2030,8 @@ var currentDesktopWidth = 0;
                     },
                     {
                         interactiveMode: 'tour-clock-show-date',
-                        title: 'Change a clock option',
-                        body: 'Find Show date and set it to On so the digital clock can show the date as well as the time.',
+                        title: 'Adjust the clock',
+                        body: 'You can turn options on or off for each module.\n\nGive it a try:\nSet Show date to On so the digital clock can show the date along with the time.',
                         highlight: function() {
                             var body = document.getElementById('layout-cell-settings-modal-body');
                             return body ? body.querySelector('select[name$="__show_date"]') : null;
@@ -1882,8 +2039,8 @@ var currentDesktopWidth = 0;
                     },
                     {
                         interactiveMode: 'tour-close-settings',
-                        title: 'Close settings',
-                        body: 'Click the X in the corner or the dark backdrop outside the panel to close it and return to the grid.',
+                        title: 'Back to the grid',
+                        body: 'When you are finished in settings, you can close the panel and return to the grid.\n\nGive it a try:\nClick the X or the dim area outside the panel to close it.',
                         highlight: function() {
                             return document.getElementById('layout-cell-settings-modal-close');
                         }
@@ -1891,7 +2048,7 @@ var currentDesktopWidth = 0;
                     {
                         interactiveMode: 'tour-save-layout',
                         title: 'Save your layout',
-                        body: 'Click Save Layout to store the grid and module options (including Show date) on the server. You will go to the main dashboard.',
+                        body: 'Save Layout keeps your grid and module choices for next time.\n\nGive it a try:\nClick Save Layout when you are ready to finish. You will open the main dashboard.',
                         highlight: function() {
                             return document.getElementById('save-button');
                         }
@@ -1921,13 +2078,76 @@ var currentDesktopWidth = 0;
                     } catch (e) {}
                 }
 
+                function clearTourModulePickRestrictions() {
+                    if (tourModulePickRestrictCleanup) {
+                        try { tourModulePickRestrictCleanup(); } catch (eClr) {}
+                        tourModulePickRestrictCleanup = null;
+                    }
+                }
+
                 function clearTourInteractionLocks() {
+                    clearTourModulePickRestrictions();
                     document.querySelectorAll('.layout-tour-locked').forEach(function(el) {
                         el.classList.remove('layout-tour-locked');
                     });
                     document.querySelectorAll('.layout-tour-target-btn').forEach(function(el) {
                         el.classList.remove('layout-tour-target-btn');
                     });
+                }
+
+                function applyTourModulePickRestrictions(step) {
+                    clearTourModulePickRestrictions();
+                    if (!step || !step.interactivePick || !step.interactivePick.moduleId) return;
+                    var cellR = getTourAnchorCell();
+                    if (!cellR) return;
+                    var rowsR = cellR.querySelectorAll('.cell-module-slot-row');
+                    var rowR = rowsR[step.interactivePick.slot];
+                    var selR = rowR ? rowR.querySelector('.cell-slot-module-select') : null;
+                    if (!selR || !selR.options || selR.options.length < 1) return;
+                    var allowed = step.interactivePick.moduleId;
+                    var optStates = [];
+                    var i;
+                    for (i = 0; i < selR.options.length; i++) {
+                        var opt = selR.options[i];
+                        optStates.push({ el: opt, disabled: opt.disabled });
+                        opt.disabled = opt.value !== allowed;
+                    }
+                    selR.setAttribute('data-tour-allow-module', allowed);
+                    selR.classList.add('layout-tour-pick-restricted');
+                    function setOpenHint() {
+                        selR.classList.add('layout-tour-pick-select-active');
+                    }
+                    function clearOpenHint() {
+                        selR.classList.remove('layout-tour-pick-select-active');
+                    }
+                    function onFocusOutPick() {
+                        window.setTimeout(function () {
+                            if (document.activeElement !== selR) clearOpenHint();
+                        }, 0);
+                    }
+                    function onKeydownPick(ev) {
+                        if (ev.key === 'Escape') clearOpenHint();
+                    }
+                    function onChangePick() {
+                        clearOpenHint();
+                    }
+                    selR.addEventListener('focus', setOpenHint);
+                    selR.addEventListener('blur', onFocusOutPick);
+                    selR.addEventListener('mousedown', setOpenHint);
+                    selR.addEventListener('keydown', onKeydownPick);
+                    selR.addEventListener('change', onChangePick);
+                    tourModulePickRestrictCleanup = function () {
+                        selR.removeEventListener('focus', setOpenHint);
+                        selR.removeEventListener('blur', onFocusOutPick);
+                        selR.removeEventListener('mousedown', setOpenHint);
+                        selR.removeEventListener('keydown', onKeydownPick);
+                        selR.removeEventListener('change', onChangePick);
+                        selR.classList.remove('layout-tour-pick-restricted', 'layout-tour-pick-select-active');
+                        selR.removeAttribute('data-tour-allow-module');
+                        optStates.forEach(function (s) {
+                            if (s.el && s.el.parentNode === selR) s.el.disabled = s.disabled;
+                        });
+                    };
                 }
 
                 function applyTourInteractionLocks(step) {
@@ -2150,29 +2370,44 @@ var currentDesktopWidth = 0;
                         }
                     } catch (e) {}
                     clearHighlight();
+                    detachTourResizeObserver();
+                    clearTourAnchorCellMarks();
+                    resetTourPanelLayout();
                     currentHoleEl = null;
                     root.classList.add('layout-tour-hidden');
+                    root.classList.remove('layout-tour-welcome-step');
                     root.setAttribute('aria-hidden', 'true');
                     document.body.classList.remove('layout-tour-active');
+                    document.body.classList.remove('layout-tour-dim-non-anchor');
+                    document.body.classList.remove('layout-tour-modal-step');
                     stripTourFromUrl();
                     window._layoutTourOnEscape = null;
                 }
 
                 function applyStep() {
                     clearHighlight();
+                    detachTourResizeObserver();
+                    clearTourAnchorCellMarks();
                     var step = steps[stepIndex];
                     if (!step) {
                         endTour();
                         return;
                     }
                     titleEl.textContent = step.title;
-                    bodyEl.textContent = step.body;
+                    setTourStepBody(bodyEl, step.body);
+                    document.body.classList.toggle('layout-tour-dim-non-anchor', stepIndex > 0);
+                    document.body.classList.toggle(
+                        'layout-tour-modal-step',
+                        step.interactiveMode === 'tour-clock-show-date' || step.interactiveMode === 'tour-close-settings'
+                    );
+                    root.classList.toggle('layout-tour-welcome-step', stepIndex === 0);
                     btnBack.style.display = (stepIndex >= 6 && stepIndex < 9) ? '' : 'none';
                     btnNext.style.display = (step.interactiveMode || step.interactivePick) ? 'none' : '';
                     btnNext.textContent = stepIndex >= steps.length - 1 ? 'Done' : 'Next';
 
                     var isSaveOnlyStep = stepIndex === steps.length - 1;
                     var cell = isSaveOnlyStep ? null : getTourAnchorCell();
+                    var anchorCellForTourUi = stepIndex > 0 ? getTourAnchorCell() : null;
                     var target = step.highlight(cell);
 
                     var holeEl = null;
@@ -2190,13 +2425,20 @@ var currentDesktopWidth = 0;
 
                     if (holeEl) {
                         try {
-                            holeEl.scrollIntoView({ block: 'center', inline: 'center', behavior: 'auto' });
+                            holeEl.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'auto' });
                         } catch (e) {
                             try { holeEl.scrollIntoView(); } catch (e2) {}
                         }
                     }
 
                     updateSpotlightPath(holeEl);
+                    if (holeEl && holeEl.classList && holeEl.classList.contains('grid-cell')) {
+                        attachTourResizeObserver(holeEl);
+                    }
+
+                    if (anchorCellForTourUi) {
+                        anchorCellForTourUi.classList.add('layout-tour-anchor-cell');
+                    }
 
                     if (target && target.classList) {
                         highlightedEl = target;
@@ -2204,6 +2446,7 @@ var currentDesktopWidth = 0;
                     }
 
                     applyTourInteractionLocks(step);
+                    applyTourModulePickRestrictions(step);
 
                     if (step.interactivePick && cell) {
                         var rowsAuto = cell.querySelectorAll('.cell-module-slot-row');
@@ -2232,6 +2475,20 @@ var currentDesktopWidth = 0;
                                 applyStep();
                             }, 0);
                         }
+                    }
+
+                    if (stepIndex === 0) {
+                        resetTourPanelLayout();
+                    } else {
+                        var panelAnchor = null;
+                        if (target && typeof target.getBoundingClientRect === 'function') {
+                            panelAnchor = target;
+                        } else if (cell && typeof cell.getBoundingClientRect === 'function') {
+                            panelAnchor = cell;
+                        } else if (holeEl && typeof holeEl.getBoundingClientRect === 'function') {
+                            panelAnchor = holeEl;
+                        }
+                        scheduleTourPanelPosition(panelAnchor, step);
                     }
                 }
 

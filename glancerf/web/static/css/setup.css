@@ -653,13 +653,13 @@ input[type="time"]:focus {
   margin-top: 30px;
 }
 
-.button-row button[type="button"] {
+.setup-nav-secondary {
   background-color: #333;
   color: #0f0;
   border-color: #555;
 }
 
-.button-row button[type="button"]:hover {
+.setup-nav-secondary:hover {
   background-color: #444;
   border-color: #0f0;
 }
