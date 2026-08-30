@@ -22,7 +22,7 @@ from glancerf.config import DETAILED_LEVEL, get_logger
 
 _log = get_logger("updater")
 
-GITHUB_RELEASE_BY_TAG = "https://api.github.com/repos/pomtom44/GlanceRF/releases/tags/{tag}"
+GITHUB_RELEASE_BY_TAG = "https://api.github.com/repos/pomtom44/GlanceRF_Dev/releases/tags/{tag}"
 GITHUB_HEADERS = {"Accept": "application/vnd.github.v3+json", "User-Agent": "GlanceRF-updater"}
 
 ITEMS_TO_UPDATE = ["glancerf", "run.py", "requirements"]
@@ -95,7 +95,7 @@ async def get_release_zip_url(version: str) -> Optional[str]:
                 if zip_url:
                     return zip_url
         for candidate_tag in (tag, version):
-            zip_url = f"https://github.com/pomtom44/GlanceRF/archive/refs/tags/{candidate_tag}.zip"
+            zip_url = f"https://github.com/pomtom44/GlanceRF_Dev/archive/refs/tags/{candidate_tag}.zip"
             async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
                 r = await client.head(zip_url)
                 if r.status_code in (200, 302):
@@ -127,7 +127,7 @@ def get_extracted_root(extract_dir: Path) -> Optional[Path]:
     v2_project = extract_dir / "V2" / "Project"
     if v2_project.exists() and (v2_project / "run.py").exists() and (v2_project / "glancerf").exists():
         return v2_project
-    # Top-level dirs (e.g. pomtom44-GlanceRF-xxx or GlanceRF-main)
+    # Top-level dirs (e.g. pomtom44-GlanceRF_Dev-xxx or GlanceRF_Dev-main)
     for item in extract_dir.iterdir():
         if item.is_dir():
             sub_project = item / "Project"
@@ -190,23 +190,25 @@ def _merge_glancerf_dir(src: Path, dst: Path) -> None:
                 if dst_entry.exists():
                     shutil.rmtree(dst_entry)
                 shutil.copytree(entry, dst_entry)
+    # Submodule folders removed upstream: checked unconditionally, since the "modules" folder
+    # itself always exists in a real release, so the generic per-entry loop below (which only
+    # acts when an entry is entirely missing from src) never reaches a "modules"-specific case.
+    if (src / "modules").exists() and (dst / "modules").exists():
+        for sub in list((dst / "modules").iterdir()):
+            if sub.name == "_custom":
+                continue
+            if not (src / "modules" / sub.name).exists():
+                if sub.is_dir():
+                    shutil.rmtree(sub)
+                else:
+                    sub.unlink()
     for entry in list(dst.iterdir()):
-        if (src / entry.name).exists():
+        if entry.name == "modules" or (src / entry.name).exists():
             continue
-        if entry.name == "modules":
-            for sub in list((dst / "modules").iterdir()):
-                if sub.name == "_custom":
-                    continue
-                if not (src / "modules" / sub.name).exists():
-                    if sub.is_dir():
-                        shutil.rmtree(sub)
-                    else:
-                        sub.unlink()
+        if entry.is_dir():
+            shutil.rmtree(entry)
         else:
-            if entry.is_dir():
-                shutil.rmtree(entry)
-            else:
-                entry.unlink()
+            entry.unlink()
 
 
 def apply_update(extracted_root: Path) -> Tuple[bool, str]:

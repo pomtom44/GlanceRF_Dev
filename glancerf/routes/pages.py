@@ -54,12 +54,18 @@ def register_pages(app, connection_manager: Optional[ConnectionManager] = None):
         layout = current_config.get("layout") or []
         modules_settings_schema = {}
         show_title_setting = {"id": "show_title", "label": "Show module title", "type": "checkbox", "default": True}
+        background_updates_setting = {
+            "id": "background_updates",
+            "label": "Keep updating while hidden in a rotating cell",
+            "type": "checkbox",
+            "default": True,
+        }
         for m in all_modules:
             mid = m.get("id", "")
             if not mid:
                 continue
             existing = list(m.get("settings") or [])
-            modules_settings_schema[mid] = [show_title_setting] + existing
+            modules_settings_schema[mid] = [show_title_setting, background_updates_setting] + existing
 
         grid_rows = int(current_config.get("grid_rows") or 3)
         grid_columns = int(current_config.get("grid_columns") or 3)

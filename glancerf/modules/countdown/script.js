@@ -1,5 +1,20 @@
 (function() {
     var liveStopwatchState = {};
+    var lastReportedRunning = null;
+
+    function reportRunningState() {
+        var anyRunning = false;
+        for (var k in liveStopwatchState) {
+            if (liveStopwatchState[k] && liveStopwatchState[k].running) { anyRunning = true; break; }
+        }
+        if (anyRunning === lastReportedRunning) return;
+        lastReportedRunning = anyRunning;
+        fetch('/api/countdown/running', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ running: anyRunning })
+        }).catch(function() {});
+    }
 
     function parseDateOnly(s) {
         var m = (s || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -144,6 +159,8 @@
                 doReset(slotKey);
             }
         });
+        updateCountdowns();
+        reportRunningState();
     });
 
     document.addEventListener('keydown', function(e) {
@@ -169,9 +186,13 @@
             if (startStopNorm && keyNorm === startStopNorm) {
                 e.preventDefault();
                 doStartStop(slotKey);
+                updateCountdowns();
+                reportRunningState();
             } else if (resetNorm && keyNorm === resetNorm) {
                 e.preventDefault();
                 doReset(slotKey);
+                updateCountdowns();
+                reportRunningState();
             }
         });
     });

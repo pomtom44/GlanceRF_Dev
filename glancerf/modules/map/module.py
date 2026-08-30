@@ -93,6 +93,13 @@ MODULE = {
             "options": ON_OFF_OPTIONS,
             "default": "0",
         },
+        {
+            "id": "show_new_satellites",
+            "label": "Show all-satellite background dots (all known amateur satellites, independent of any tracked passes)",
+            "type": "select",
+            "options": ON_OFF_OPTIONS,
+            "default": "1",
+        },
         {"type": "separator"},
         {
             "id": "show_aurora",

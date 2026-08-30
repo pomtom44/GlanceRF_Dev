@@ -197,6 +197,24 @@ def _fetch_ng3k_rss() -> list[dict[str, Any]]:
     return result
 
 
+def _format_ics_datetime(raw: str, default_time: str) -> str:
+    """Convert an ICS DTSTART/DTEND value (YYYYMMDD or YYYYMMDDTHHMMSSZ) to standard
+    dashed ISO8601 UTC (YYYY-MM-DDTHH:MM:SSZ). The raw compact form sorts incorrectly
+    against dashed timestamps in string comparisons and is not parsed by JS Date()."""
+    digits = re.sub(r"[^0-9TZ]", "", raw or "")
+    if len(digits) >= 15 and "T" in digits:
+        date_part, _, time_part = digits.partition("T")
+        time_part = time_part.rstrip("Z")
+        if len(date_part) >= 8 and len(time_part) >= 6:
+            return (
+                date_part[:4] + "-" + date_part[4:6] + "-" + date_part[6:8] + "T" +
+                time_part[:2] + ":" + time_part[2:4] + ":" + time_part[4:6] + "Z"
+            )
+    if len(digits) >= 8:
+        return digits[:4] + "-" + digits[4:6] + "-" + digits[6:8] + "T" + default_time + "Z"
+    return ""
+
+
 def _parse_ics_events(ics_text: str) -> list[dict[str, Any]]:
     """Parse iCalendar text for VEVENTs; return list of expedition dicts with source DXCAL."""
     result: list[dict[str, Any]] = []
@@ -231,18 +249,8 @@ def _parse_ics_events(ics_text: str) -> list[dict[str, Any]]:
                 desc = value[:200]
         if not summary:
             continue
-        start_utc = ""
-        end_utc = ""
-        dtstart = re.sub(r"[^0-9TZ]", "", dtstart)
-        dtend = re.sub(r"[^0-9TZ]", "", dtend)
-        if len(dtstart) >= 15 and "T" in dtstart:
-            start_utc = dtstart if dtstart.endswith("Z") else dtstart + "Z"
-        elif len(dtstart) >= 8:
-            start_utc = dtstart[:4] + "-" + dtstart[4:6] + "-" + dtstart[6:8] + "T00:00:00Z"
-        if len(dtend) >= 15 and "T" in dtend:
-            end_utc = dtend if dtend.endswith("Z") else dtend + "Z"
-        elif len(dtend) >= 8:
-            end_utc = dtend[:4] + "-" + dtend[4:6] + "-" + dtend[6:8] + "T23:59:59Z"
+        start_utc = _format_ics_datetime(dtstart, default_time="00:00:00")
+        end_utc = _format_ics_datetime(dtend, default_time="23:59:59")
         if not end_utc and start_utc:
             end_utc = start_utc
         call = summary

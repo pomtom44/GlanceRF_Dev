@@ -137,10 +137,8 @@ def _parse_nmea_line(line: str) -> Optional[dict]:
             result["lon"] = lon
         if len(parts) >= 2 and parts[1]:
             t = parts[1][:6]
-            if len(t) >= 6:
-                h = int(t[:2]) if len(t) > 0 else 0
-                m = int(t[2:4]) if len(t) > 4 else 0
-                s = int(t[4:6]) if len(t) > 6 else 0
+            if len(t) == 6 and t.isdigit():
+                h, m, s = int(t[:2]), int(t[2:4]), int(t[4:6])
                 today = datetime.now(timezone.utc).date()
                 result["time"] = datetime(today.year, today.month, today.day, h, m, s, tzinfo=timezone.utc)
         if len(parts) >= 8 and parts[7]:

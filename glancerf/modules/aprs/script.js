@@ -125,6 +125,7 @@
         if (!listEl) return;
 
         var settings = getCellSettings(cell);
+        if (typeof window.glancerfBackgroundUpdatesAllowed === 'function' && !window.glancerfBackgroundUpdatesAllowed(cell, settings)) return;
         var maxEntries = 30;
         try {
             var n = parseInt(settings.max_entries, 10);
@@ -223,4 +224,5 @@
 
     run();
     setInterval(run, POLL_INTERVAL_MS);
+    window.addEventListener('glancerf_stack_slot_change', run);
 })();

@@ -42,19 +42,44 @@ def get_system_info() -> dict:
         "platform_release": platform.release(),
         "platform_version": _normalize_platform_version(system, raw_version),
         "architecture": platform.machine(),
+        "processor": platform.processor(),
         "python_version": platform.python_version(),
+        "python_implementation": platform.python_implementation(),
     }
 
 
 def get_glancerf_info() -> dict:
-    """Get GlanceRF info for telemetry. Module counts omitted until modules are implemented."""
+    """Get GlanceRF info for telemetry: version, grid size, and installed/enabled module usage."""
     try:
         config = get_config()
         desktop_mode = config.get("desktop_mode") or "browser"
+        layout = config.get("layout") or []
+        module_settings = config.get("module_settings") or {}
+
+        from glancerf.modules import get_module_ids
+        from glancerf.utils.cell_stack import collect_module_ids_from_layout, iter_layout_cell_module_settings
+
+        # get_module_ids() includes a synthetic "" entry for the blank dropdown option; exclude it.
+        installed_modules = sorted(mid for mid in get_module_ids() if mid)
+        enabled_modules = sorted(collect_module_ids_from_layout(layout, module_settings))
+        configured_cells_count = len({
+            cell_key
+            for cell_key, mid, _settings, _slot in iter_layout_cell_module_settings(layout, module_settings)
+            if mid
+        })
+
         return {
             "version": __version__,
             "desktop_mode": desktop_mode,
             "use_desktop": desktop_mode in ("desktop", "browser"),  # backward compat for telemetry server
+            "grid_columns": config.get("grid_columns"),
+            "grid_rows": config.get("grid_rows"),
+            "configured_cells_count": configured_cells_count,
+            "enabled_module_count": len(enabled_modules),
+            "enabled_modules": enabled_modules,
+            "installed_module_count": len(installed_modules),
+            "installed_modules": installed_modules,
+            "update_mode": config.get("update_mode") or "none",
         }
     except Exception:
         return {"version": __version__}

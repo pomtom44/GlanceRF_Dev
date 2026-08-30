@@ -47,3 +47,10 @@ restart_services.sh
 
 # Local / debug (not for version control)
 debug.txt
+
+# .NET build artifacts (Build Scripts/GlanceRF.NativeBootstrap)
+bin/
+obj/
+
+# Build Scripts output (generated installer EXEs, not source)
+Build Scripts/output/

@@ -70,15 +70,22 @@ _COMMIT_EVERY = 50  # commit frequently so displayed data is fresh
 
 
 def _aprs_passcode_from_callsign(callsign: str) -> int:
-    """Compute APRS-IS passcode from callsign (without SSID). Standard algorithm."""
+    """Compute APRS-IS passcode from callsign (without SSID). Standard algorithm.
+
+    Must iterate only the real characters of the callsign - padding to a fixed
+    width (as a previous version did) folds the padding character's ordinal
+    into the hash and produces a wrong passcode for every callsign that isn't
+    exactly 9 characters (i.e. nearly all of them). Verified against the
+    well-known reference vector: N0CALL -> 13023.
+    """
     call = (callsign or "").upper().split("-")[0].strip()
     if not call:
         return -1
-    call = call.ljust(9)[:9]
     hash_val = 0x73E2  # 29666
-    for i in range(0, 9, 2):
-        hash_val ^= ord(call[i + 1]) if i + 1 < len(call) else 0
-        hash_val ^= (ord(call[i]) if i < len(call) else 0) << 8
+    for i in range(0, len(call), 2):
+        hash_val ^= ord(call[i]) << 8
+        if i + 1 < len(call):
+            hash_val ^= ord(call[i + 1])
     return hash_val & 0x7FFF
 
 
@@ -214,7 +221,13 @@ def _run_aprs_cache_thread() -> None:
                 if not data:
                     raise OSError("Connection closed before server ID")
                 buf += data
-                while b"\n" in buf or b"\r" in buf:
+                # Split on \n only: partition() falls back to "whole buffer, no
+                # remainder" when its separator isn't found, so also checking for a
+                # bare \r here would flush a line whose terminating \n hasn't arrived
+                # yet in this recv() chunk, truncating it if \r and \n land in
+                # separate TCP segments. \r is just stripped below once a real \n
+                # closes the line.
+                while b"\n" in buf:
                     line, _, buf = buf.partition(b"\n")
                     line = line.replace(b"\r", b"").decode("ascii", errors="replace").strip()
                     if not line:
@@ -237,7 +250,13 @@ def _run_aprs_cache_thread() -> None:
                 if not data:
                     break
                 buf += data
-                while b"\n" in buf or b"\r" in buf:
+                # Split on \n only: partition() falls back to "whole buffer, no
+                # remainder" when its separator isn't found, so also checking for a
+                # bare \r here would flush a line whose terminating \n hasn't arrived
+                # yet in this recv() chunk, truncating it if \r and \n land in
+                # separate TCP segments. \r is just stripped below once a real \n
+                # closes the line.
+                while b"\n" in buf:
                     line, _, buf = buf.partition(b"\n")
                     line = line.replace(b"\r", b"").decode("ascii", errors="replace").strip()
                     if not line or line.startswith("#"):

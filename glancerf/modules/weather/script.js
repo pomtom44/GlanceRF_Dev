@@ -169,6 +169,7 @@
         });
     }
     function updateCell(cell, cellKey, ms) {
+        if (typeof window.glancerfBackgroundUpdatesAllowed === 'function' && !window.glancerfBackgroundUpdatesAllowed(cell, ms)) return;
         getCoord(ms, function(coord, errMsg) {
             if (!coord) {
                 showError(cell, errMsg || 'Set grid or lat,lng');
@@ -205,11 +206,15 @@
             var r = cell.getAttribute('data-row');
             var c = cell.getAttribute('data-col');
             var cellKey = (r != null && c != null) ? r + '_' + c : '';
-            var ms = (cellKey && allSettings[cellKey]) ? allSettings[cellKey] : {};
-            if (maybeUseCache(cell, cellKey, ms)) return;
-            updateCell(cell, cellKey, ms);
+            var slotKey = cell.getAttribute('data-settings-key') || cellKey;
+            var ms = (typeof window.glancerfSettingsForElement === 'function')
+                ? (window.glancerfSettingsForElement(cell) || {})
+                : ((cellKey && allSettings[cellKey]) ? allSettings[cellKey] : {});
+            if (maybeUseCache(cell, slotKey, ms)) return;
+            updateCell(cell, slotKey, ms);
         });
     }
     runAll();
     setInterval(runAll, WEATHER_UPDATE_MS);
+    window.addEventListener('glancerf_stack_slot_change', runAll);
 })();

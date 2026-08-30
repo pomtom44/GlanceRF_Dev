@@ -1,6 +1,7 @@
 """Cache warmer for dxpeditions module. Called by core when headless and module is active."""
 
 import asyncio
+import json
 from datetime import datetime, timezone
 from typing import Any
 
@@ -10,7 +11,14 @@ from glancerf.utils.cache import get_cache
 async def warm(settings: dict, config: Any) -> None:
     """Fetch dxpeditions and fill cache. Same cache key as API."""
     sources = settings.get("enabled_sources")
-    enabled = [s.strip() for s in (sources or "").split(",") if s.strip()] if sources else None
+    enabled = None
+    if sources:
+        try:
+            parsed = json.loads(sources) if isinstance(sources, str) else sources
+            if isinstance(parsed, list):
+                enabled = [s.strip() for s in parsed if isinstance(s, str) and s.strip()] or None
+        except (json.JSONDecodeError, TypeError):
+            enabled = None
     try:
         from glancerf.modules.dxpeditions.dxpedition_service import get_dxpeditions_cached
         from glancerf.modules.dxpeditions.api_routes import _CACHE_TTL_SEC, _DEFAULT_CREDITS

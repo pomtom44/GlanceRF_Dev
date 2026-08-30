@@ -29,6 +29,12 @@
             .replace(/"/g, '&quot;');
     }
 
+    function isAllowedUrl(url) {
+        if (!url || typeof url !== 'string') return false;
+        var t = url.trim().toLowerCase();
+        return t.indexOf('http://') === 0 || t.indexOf('https://') === 0;
+    }
+
     function getCellSettings(cell) {
         var allSettings = window.GLANCERF_MODULE_SETTINGS || {};
         var r = cell.getAttribute('data-row');
@@ -84,13 +90,13 @@
         slice.forEach(function(d) {
             var item = document.createElement('div');
             item.className = 'dxpeditions_item';
-            var call = (d.call || '').trim();
+            var call = escapeHtml((d.call || '').trim());
             var url = (d.url || '').trim();
-            var loc = (d.location || '').trim();
+            var loc = escapeHtml((d.location || '').trim());
             var dates = formatDateRange(d.start_utc, d.end_utc);
             var info = (d.info || '').trim();
-            var source = (d.source || '').trim();
-            var callHtml = url ? '<a href="' + url.replace(/"/g, '&quot;') + '" target="_blank" rel="noopener">' + call + '</a>' : call;
+            var source = escapeHtml((d.source || '').trim());
+            var callHtml = isAllowedUrl(url) ? '<a href="' + escapeHtml(url) + '" target="_blank" rel="noopener">' + call + '</a>' : call;
             item.innerHTML =
                 '<span class="dxpeditions_call">' + callHtml + '</span>' +
                 (loc ? ' <span class="dxpeditions_location">' + loc + '</span>' : '') +
@@ -112,6 +118,7 @@
         if (!wrap || !listEl) return;
 
         var settings = getCellSettings(cell);
+        if (typeof window.glancerfBackgroundUpdatesAllowed === 'function' && !window.glancerfBackgroundUpdatesAllowed(cell, settings)) return;
         var maxEntries = 15;
         try {
             var n = parseInt(settings.max_entries, 10);
@@ -261,4 +268,5 @@
     runScrollToggles();
     setInterval(run, 25 * 1000);
     setInterval(runScrollToggles, 5000);
+    window.addEventListener('glancerf_stack_slot_change', run);
 })();

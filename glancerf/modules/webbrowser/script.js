@@ -1,6 +1,9 @@
 (function() {
     var _originalConsoleError = console.error;
     function getCellSettings(cell) {
+        if (typeof window.glancerfSettingsForElement === 'function') {
+            return window.glancerfSettingsForElement(cell) || {};
+        }
         var allSettings = window.GLANCERF_MODULE_SETTINGS || {};
         var r = cell.getAttribute('data-row');
         var c = cell.getAttribute('data-col');
@@ -11,6 +14,10 @@
         if (!url || typeof url !== 'string') return false;
         var t = url.trim().toLowerCase();
         return t.indexOf('http://') === 0 || t.indexOf('https://') === 0;
+    }
+    function isSlotActive(cell) {
+        var slot = cell.closest ? cell.closest('.glancerf-cell-slot') : null;
+        return !(slot && !slot.classList.contains('glancerf-cell-slot-active'));
     }
     function showFrameBlockedOverlay() {
         var cells = document.querySelectorAll('.grid-cell-webbrowser .webbrowser_wrap.has-url:not(.mode-proxy)');
@@ -33,6 +40,7 @@
             wrap.classList.remove('has-url');
             wrap.classList.remove('mode-proxy');
             frame.removeAttribute('src');
+            cell._webbrowserSrc = null;
             if (frameBlocked) frameBlocked.style.display = 'none';
             if (placeholder) placeholder.style.display = '';
             if (openLink) { openLink.style.display = 'none'; openLink.href = '#'; }
@@ -52,6 +60,8 @@
             wrap.classList.remove('mode-proxy');
             if (frameBlocked) frameBlocked.style.display = 'flex';
         }
+        cell._webbrowserSrc = src;
+        if (!isSlotActive(cell)) return;
         if (frame.getAttribute('src') !== src) frame.setAttribute('src', src);
     }
     console.error = function() {
@@ -71,4 +81,12 @@
         run();
     }
     window.GLANCERF_webbrowser_refresh = run;
+    window.addEventListener('glancerf_stack_slot_change', function () {
+        document.querySelectorAll('.grid-cell-webbrowser').forEach(function (cell) {
+            var frame = cell.querySelector('.webbrowser_frame');
+            if (frame && cell._webbrowserSrc && isSlotActive(cell) && frame.getAttribute('src') !== cell._webbrowserSrc) {
+                frame.setAttribute('src', cell._webbrowserSrc);
+            }
+        });
+    });
 })();

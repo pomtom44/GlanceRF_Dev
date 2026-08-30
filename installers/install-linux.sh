@@ -48,7 +48,7 @@ if [ ! -f "$PROJECT_DIR/run.py" ]; then
     PROJECT_DIR="$(pwd)"
 fi
 if [ ! -f "$PROJECT_DIR/run.py" ]; then
-    echo "Error: run.py not found. Run this script from the Project folder or Project/installers."
+    echo "Error: run.py not found. Run this script from the GlanceRF folder or GlanceRF/installers."
     exit 1
 fi
 echo "Project folder: $PROJECT_DIR"
@@ -185,16 +185,7 @@ else
     WANT_SHORTCUT=false
     WANT_STARTUP=false
 fi
-echo "Installing... (this may take a few minutes)"
-
-# --- 1. Install system packages (Python, pip, venv) ---
-if [ -n "$PKG_INSTALL" ]; then
-    if ! run_quiet "Installing system packages (Python, pip, venv)" bash -c "$PKG_INSTALL"; then
-        echo "System package install had warnings; continuing if Python is available."
-    fi
-fi
-
-# --- 2. Find Python ---
+# --- Quick Python check (before any system-level changes) ---
 PYTHON3=""
 for cmd in python3 python3.12 python3.11 python3.10 python3.9 python; do
     if command -v "$cmd" &>/dev/null; then
@@ -205,6 +196,43 @@ for cmd in python3 python3.12 python3.11 python3.10 python3.9 python; do
     fi
 done
 
+NEED_PYTHON_INSTALL=false
+if [ -z "$PYTHON3" ]; then
+    echo "Python 3.8 or higher not found."
+    if [ -n "$PKG_INSTALL" ]; then
+        read -r -p "Install Python via ${DISTRO_NAME}? (y/n) " install_resp
+        case "$install_resp" in
+            y|Y) NEED_PYTHON_INSTALL=true ;;
+            *) echo "Install Python from your distro or https://www.python.org/downloads/"; exit 1 ;;
+        esac
+    else
+        echo "Install Python 3.8+ from your distro or https://www.python.org/downloads/"
+        exit 1
+    fi
+fi
+
+echo "Installing... (this may take a few minutes)"
+
+# --- 1. Install system packages (Python, pip, venv) if needed ---
+if [ "$NEED_PYTHON_INSTALL" = true ]; then
+    # Not wrapped in the spinner: sudo's password prompt would be hard to see/read
+    # interleaved with the spinner's repeated carriage-return redraws.
+    echo "Installing system packages (Python, pip, venv) - you may be prompted for your password..."
+    if ! bash -c "$PKG_INSTALL"; then
+        echo "System package install had warnings; continuing if Python is available."
+    fi
+    # Re-scan now that packages are installed
+    for cmd in python3 python3.12 python3.11 python3.10 python3.9 python; do
+        if command -v "$cmd" &>/dev/null; then
+            if "$cmd" -c "import sys; sys.exit(0 if sys.version_info >= (3, 8) else 1)" 2>/dev/null; then
+                PYTHON3="$cmd"
+                break
+            fi
+        fi
+    done
+fi
+
+# --- 2. Verify Python ---
 if [ -z "$PYTHON3" ]; then
     echo "Python 3.8 or higher not found. Install it from your distro or https://www.python.org/downloads/"
     [ -n "$PKG_INSTALL" ] && echo "  Or run: $PKG_INSTALL"
@@ -264,6 +292,8 @@ echo "Config: desktop_mode=$DESKTOP_MODE"
 if [ "$WANT_SHORTCUT" = true ] && [ "$HAS_DISPLAY" = "yes" ]; then
     DESKTOP_DIR="${XDG_DESKTOP_DIR:-$HOME/Desktop}"
     mkdir -p "$DESKTOP_DIR"
+    ICON_LINE=""
+    [ -f "$PROJECT_DIR/logos/logo.png" ] && ICON_LINE="Icon=$PROJECT_DIR/logos/logo.png"
     if [ "$DESKTOP_MODE" = "headless" ]; then
         # Service mode: shortcut opens browser to web page
         PORT="$("$VENV_PYTHON" -c "import json; c=json.load(open('$PROJECT_DIR/glancerf_config.json')); print(c.get('port',8080))" 2>/dev/null || echo "8080")"
@@ -276,6 +306,7 @@ Comment=GlanceRF dashboard
 Exec=xdg-open http://localhost:$PORT
 Terminal=false
 Categories=Utility;
+$ICON_LINE
 EOF
         chmod +x "$DESKTOP_FILE"
         echo "Shortcut: $DESKTOP_FILE (opens browser)"
@@ -291,6 +322,7 @@ Exec=$VENV_PYTHON run.py
 Path=$PROJECT_DIR
 Terminal=true
 Categories=Utility;
+$ICON_LINE
 EOF
         chmod +x "$DESKTOP_FILE"
         echo "Shortcut: $DESKTOP_FILE"
@@ -323,6 +355,7 @@ After=network.target
 
 [Service]
 Type=simple
+KillMode=process
 WorkingDirectory=$PROJECT_DIR
 ExecStart=$VENV_PYTHON run.py
 Restart=on-failure
@@ -373,6 +406,7 @@ After=graphical-session.target
 
 [Service]
 Type=simple
+KillMode=process
 WorkingDirectory=$PROJECT_DIR
 ExecStart=$VENV_PYTHON run.py
 Restart=on-failure
@@ -418,7 +452,9 @@ finally:
 elif [ "$WANT_STARTUP" = true ] && [ "$HAS_SYSTEMD" = "yes" ]; then
     echo "Starting GlanceRF..."
     systemctl --user start glancerf.service 2>/dev/null || true
-    echo "GlanceRF started. Status: systemctl --user status glancerf"
+    PORT="$("$VENV_PYTHON" -c "import json; c=json.load(open('$PROJECT_DIR/glancerf_config.json')); print(c.get('port',8080))" 2>/dev/null || echo "8080")"
+    echo "GlanceRF is running. Open http://localhost:$PORT in your browser."
+    echo "Status: systemctl --user status glancerf"
 else
     echo "Starting GlanceRF..."
     cd "$PROJECT_DIR"

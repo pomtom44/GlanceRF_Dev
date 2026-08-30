@@ -106,6 +106,9 @@
                 var showTerminator = (ms.show_terminator === '1' || ms.show_terminator === true);
                 var showSunMoon = (ms.show_sun_moon === '1' || ms.show_sun_moon === true);
                 var showAurora = (ms.show_aurora === '1' || ms.show_aurora === true);
+                // Default on (unlike the other toggles above) so maps configured before this
+                // setting existed keep their current always-on behaviour.
+                var showNewSatellites = !(ms.show_new_satellites === '0' || ms.show_new_satellites === false);
                 var auroraOpacity = 50;
                 if (ms.aurora_opacity !== undefined && ms.aurora_opacity !== '') {
                     var ao = parseFloat(ms.aurora_opacity, 10);
@@ -135,7 +138,7 @@
                 } else if (ms.propagation_aprs_hours && ['1','6','12','24'].indexOf(String(ms.propagation_aprs_hours)) >= 0) {
                     propagationAprsHours = parseFloat(ms.propagation_aprs_hours, 10);
                 }
-                return { zoom: zoom, lat: lat, lng: lng, map_style: mapStyle, tile_style: tileStyle, grid_style: gridStyle, show_terminator: showTerminator, show_sun_moon: showSunMoon, show_aurora: showAurora, aurora_opacity: auroraOpacity, propagation_source: propagationSource, propagation_opacity: propagationOpacity, propagation_aprs_hours: propagationAprsHours };
+                return { zoom: zoom, lat: lat, lng: lng, map_style: mapStyle, tile_style: tileStyle, grid_style: gridStyle, show_terminator: showTerminator, show_sun_moon: showSunMoon, show_aurora: showAurora, show_new_satellites: showNewSatellites, aurora_opacity: auroraOpacity, propagation_source: propagationSource, propagation_opacity: propagationOpacity, propagation_aprs_hours: propagationAprsHours };
             }
             function getTileLayer(url, options) {
                 return L.tileLayer(url, options || {});
@@ -725,7 +728,7 @@
                 var posY = -row * cell;
                 var spriteUrl = APRS_SPRITE_BASE + '/aprs-symbols-' + cell + '-' + tableIdx + '.png';
                 var aprsCode = (symbolTable || '/') + (symbol || '?');
-                var aprsCodeEsc = aprsCode.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+                var aprsCodeEsc = aprsCode.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
                 var html = '<div class="aprs-symbol-cell" style="width:' + cell + 'px;height:' + cell + 'px;background:url(\'' + spriteUrl + '\') ' + posX + 'px ' + posY + 'px no-repeat;" data-aprs-code="' + aprsCodeEsc + '" title="APRS ' + aprsCodeEsc + '"><span class="aprs-symbol-code-debug" aria-hidden="true" style="position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden;">' + aprsCodeEsc + '</span></div>';
                 var anchor = anchorBottomCenter ? [cell / 2, cell] : [cell / 2, cell / 2];
                 return L.divIcon({
@@ -775,7 +778,7 @@
                 if (!qth || typeof L === 'undefined') return;
                 var icon = getAprsSymbolDivIcon(qth.symbolTable, qth.symbol, false);
                 var m = L.marker([qth.lat, qth.lng], { icon: icon });
-                if (qth.callsign) m.bindTooltip(qth.callsign, { permanent: false, direction: 'top', offset: [0, -16] });
+                if (qth.callsign) m.bindTooltip(escapeHtml(qth.callsign), { permanent: false, direction: 'top', offset: [0, -16] });
                 m.addTo(layerGroup);
             }
             function parseNoradIdList(raw) {
@@ -790,14 +793,16 @@
                 } catch (e) {}
                 return list;
             }
+            /* Each aprs instance (grid-cell panel and/or Map Modules overlay entries) is applied
+               independently rather than merged into one settings object, so two instances with
+               different target_map values can each land on their own map. */
             function addAprsLocationsOverlay(map, cfg) {
+                if (typeof L === 'undefined') return;
                 var mapInstanceId = map._glancerfMapInstanceId || '';
-                var msAprs = getMergedModuleSettings('aprs');
-                if (!targetMapMatchesModuleSetting(msAprs.target_map, mapInstanceId)) {
-                    var lgAprs = map._aprsLocationsLayerGroup;
-                    if (lgAprs) lgAprs.clearLayers();
-                    return;
-                }
+                var instances = getAllModuleSettingsInstances('aprs');
+                var matching = instances.filter(function(ms) {
+                    return targetMapMatchesModuleSetting(ms.target_map, mapInstanceId);
+                });
                 var layerGroup = map._aprsLocationsLayerGroup;
                 if (!layerGroup) {
                     layerGroup = L.layerGroup();
@@ -805,56 +810,57 @@
                     layerGroup.addTo(map);
                 }
                 layerGroup.clearLayers();
-                var ms = msAprs;
-                var hours = (cfg && cfg.propagation_aprs_hours) ? cfg.propagation_aprs_hours : 6;
-                if (ms.hours != null && ms.hours !== '') {
-                    var h = parseFloat(ms.hours, 10);
-                    if (!isNaN(h) && h > 0 && h <= 168) hours = h;
-                }
-                var displayMode = (ms.aprs_display_mode === 'icons') ? 'icons' : 'dots';
-                var aprsFilter = (ms.aprs_filter != null && typeof ms.aprs_filter === 'string') ? ms.aprs_filter.trim() : '';
-                var ageLimitHours = typeof hours === 'number' ? hours : parseFloat(hours, 10) || 6;
-                var url = getMapApiBase() + '/api/map/aprs-locations?hours=' + encodeURIComponent(hours);
-                if (aprsFilter) url += '&filter=' + encodeURIComponent(aprsFilter);
-                fetch(url).then(function(r) {
-                    if (!r.ok) return { locations: [] };
-                    return r.json();
-                }).then(function(data) {
-                    var locs = data && data.locations;
-                    if (!locs || !locs.length) return;
-                    if (!locs.length) return;
-                    var paddedBounds = getBoundsWithBuffer(map);
-                    var nowSec = Date.now() / 1000;
-                    for (var i = 0; i < locs.length; i++) {
-                        var loc = locs[i];
-                        var lat = loc.lat, lon = loc.lon, callsign = loc.callsign || '';
-                        if (paddedBounds && !paddedBounds.contains([lat, lon])) continue;
-                        var lastSeen = loc.lastSeen;
-                        var ageHours = lastSeen != null ? (nowSec - lastSeen) / 3600 : 0;
-                        if (ageHours >= ageLimitHours) continue;
-                        if (displayMode === 'icons') {
-                            var table = loc.symbolTable || '/';
-                            var sym = loc.symbol || '?';
-                            var icon = getAprsSymbolDivIcon(table, sym);
-                            var m = L.marker([lat, lon], { icon: icon });
-                            if (callsign) m.bindTooltip(callsign, { permanent: false, direction: 'top', offset: [0, -16] });
-                            m.addTo(layerGroup);
-                        } else {
-                            var rgb = aprsAgeToRgb(ageHours, ageLimitHours);
-                            var fillColor = 'rgb(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ')';
-                            var m = L.circleMarker([lat, lon], {
-                                radius: 4,
-                                fillColor: fillColor,
-                                color: '#1a1a1a',
-                                weight: 1,
-                                opacity: 0.9,
-                                fillOpacity: 0.85
-                            });
-                            if (callsign) m.bindTooltip(callsign, { permanent: false, direction: 'top', offset: [0, -4] });
-                            m.addTo(layerGroup);
-                        }
+                if (matching.length === 0) return;
+                matching.forEach(function(ms) {
+                    var hours = (cfg && cfg.propagation_aprs_hours) ? cfg.propagation_aprs_hours : 6;
+                    if (ms.hours != null && ms.hours !== '') {
+                        var h = parseFloat(ms.hours, 10);
+                        if (!isNaN(h) && h > 0 && h <= 168) hours = h;
                     }
-                }).catch(function() {});
+                    var displayMode = (ms.aprs_display_mode === 'icons') ? 'icons' : 'dots';
+                    var aprsFilter = (ms.aprs_filter != null && typeof ms.aprs_filter === 'string') ? ms.aprs_filter.trim() : '';
+                    var ageLimitHours = typeof hours === 'number' ? hours : parseFloat(hours, 10) || 6;
+                    var url = getMapApiBase() + '/api/map/aprs-locations?hours=' + encodeURIComponent(hours);
+                    if (aprsFilter) url += '&filter=' + encodeURIComponent(aprsFilter);
+                    fetch(url).then(function(r) {
+                        if (!r.ok) return { locations: [] };
+                        return r.json();
+                    }).then(function(data) {
+                        var locs = data && data.locations;
+                        if (!locs || !locs.length) return;
+                        var paddedBounds = getBoundsWithBuffer(map);
+                        var nowSec = Date.now() / 1000;
+                        for (var i = 0; i < locs.length; i++) {
+                            var loc = locs[i];
+                            var lat = loc.lat, lon = loc.lon, callsign = loc.callsign || '';
+                            if (paddedBounds && !paddedBounds.contains([lat, lon])) continue;
+                            var lastSeen = loc.lastSeen;
+                            var ageHours = lastSeen != null ? (nowSec - lastSeen) / 3600 : 0;
+                            if (ageHours >= ageLimitHours) continue;
+                            if (displayMode === 'icons') {
+                                var table = loc.symbolTable || '/';
+                                var sym = loc.symbol || '?';
+                                var icon = getAprsSymbolDivIcon(table, sym);
+                                var m = L.marker([lat, lon], { icon: icon });
+                                if (callsign) m.bindTooltip(escapeHtml(callsign), { permanent: false, direction: 'top', offset: [0, -16] });
+                                m.addTo(layerGroup);
+                            } else {
+                                var rgb = aprsAgeToRgb(ageHours, ageLimitHours);
+                                var fillColor = 'rgb(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ')';
+                                var m = L.circleMarker([lat, lon], {
+                                    radius: 4,
+                                    fillColor: fillColor,
+                                    color: '#1a1a1a',
+                                    weight: 1,
+                                    opacity: 0.9,
+                                    fillOpacity: 0.85
+                                });
+                                if (callsign) m.bindTooltip(escapeHtml(callsign), { permanent: false, direction: 'top', offset: [0, -4] });
+                                m.addTo(layerGroup);
+                            }
+                        }
+                    }).catch(function() {});
+                });
             }
             var LIVE_SPOTS_BANDS = [
                 { id: '160', minKHz: 1800, maxKHz: 2000 }, { id: '80', minKHz: 3500, maxKHz: 4000 },
@@ -916,17 +922,9 @@
                 }
                 return pts;
             }
+            /* Each live_spots instance is applied independently (see addAprsLocationsOverlay comment). */
             function addLiveSpotsLinesOverlay(map) {
                 if (typeof L === 'undefined') return;
-                var mapInstanceIdLs = map._glancerfMapInstanceId || '';
-                var msLs = getMergedModuleSettings('live_spots');
-                if (!targetMapMatchesModuleSetting(msLs.target_map, mapInstanceIdLs)) {
-                    if (map._liveSpotsLinesLayerGroup) {
-                        map.removeLayer(map._liveSpotsLinesLayerGroup);
-                        map._liveSpotsLinesLayerGroup = null;
-                    }
-                    return;
-                }
                 if (!hasMapOverlayForModule('live_spots')) {
                     if (map._liveSpotsLinesLayerGroup) {
                         map.removeLayer(map._liveSpotsLinesLayerGroup);
@@ -934,9 +932,18 @@
                     }
                     return;
                 }
-                var ms = msLs;
-                var callsignOrGrid = (ms.callsign_or_grid || '').toString().trim();
-                if (!callsignOrGrid) return;
+                var mapInstanceIdLs = map._glancerfMapInstanceId || '';
+                var instances = getAllModuleSettingsInstances('live_spots');
+                var matching = instances.filter(function(ms) {
+                    return targetMapMatchesModuleSetting(ms.target_map, mapInstanceIdLs) && (ms.callsign_or_grid || '').toString().trim();
+                });
+                if (matching.length === 0) {
+                    if (map._liveSpotsLinesLayerGroup) {
+                        map.removeLayer(map._liveSpotsLinesLayerGroup);
+                        map._liveSpotsLinesLayerGroup = null;
+                    }
+                    return;
+                }
                 var layerGroup = map._liveSpotsLinesLayerGroup;
                 if (!layerGroup) {
                     layerGroup = L.layerGroup();
@@ -944,58 +951,68 @@
                     layerGroup.addTo(map);
                 }
                 layerGroup.clearLayers();
-                var filterMode = (ms.filter_mode || 'received').toString().trim().toLowerCase();
-                var ageMins = parseInt(ms.age_mins, 10);
-                if (isNaN(ageMins) || ageMins < 1) ageMins = 60;
-                var setupLoc = (window.GLANCERF_SETUP_LOCATION || '').toString().trim();
-                var qthStr = setupLoc || callsignOrGrid;
-                var qth = parseCenter(qthStr, 0, 0);
-                if (!qth || (qth.lat === 0 && qth.lng === 0 && !qthStr)) return;
-                var url = getMapApiBase() + '/api/live_spots/spots?filter_mode=' + encodeURIComponent(filterMode) +
-                    '&callsign_or_grid=' + encodeURIComponent(callsignOrGrid) + '&age_mins=' + ageMins;
-                fetch(url).then(function(r) {
-                    if (!r.ok) return { spots: [] };
-                    return r.json();
-                }).then(function(data) {
-                    var spots = (data && data.spots) ? data.spots : [];
-                    if (!spots.length) return;
-                    for (var i = 0; i < spots.length; i++) {
-                        var s = spots[i];
-                        var remoteLoc = (filterMode === 'sent')
-                            ? (s.receiverLocator || s.receiver_locator || s.rl)
-                            : (s.senderLocator || s.sender_locator || s.sl);
-                        if (!remoteLoc || (remoteLoc + '').trim().length < 2) continue;
-                        var remote = maidenheadToLatLng(remoteLoc);
-                        if (!remote) continue;
-                        var khz = (s.frequency && !isNaN(Number(s.frequency))) ? Number(s.frequency) / 1000 : null;
-                        var bandId = liveSpotsFreqToBand(khz);
-                        if (!liveSpotsIsBandEnabled(ms, bandId || '20')) continue;
-                        var color = liveSpotsGetBandColor(ms, bandId || '20');
-                        var pts = greatCirclePoints(qth.lat, qth.lng, remote.lat, remote.lng, 24);
-                        var segs = splitPathAtWrapBoundaries(pts);
-                        if (segs.length === 0) segs = [pts];
-                        segs.forEach(function(seg) {
-                            if (seg.length < 2) return;
-                            var linePts = seg.map(function(p) { return [p[0], p[1]]; });
-                            L.polyline(linePts, { color: color, weight: 2, opacity: 0.6, smoothFactor: 1 }).addTo(layerGroup);
-                        });
-                    }
-                    if (map.hasLayer(layerGroup)) layerGroup.bringToFront();
-                }).catch(function() {});
+                matching.forEach(function(ms) {
+                    var callsignOrGrid = (ms.callsign_or_grid || '').toString().trim();
+                    var filterMode = (ms.filter_mode || 'received').toString().trim().toLowerCase();
+                    var ageMins = parseInt(ms.age_mins, 10);
+                    if (isNaN(ageMins) || ageMins < 1) ageMins = 60;
+                    // callsign_or_grid is a spot filter (whose spots to fetch), not a location -
+                    // many real callsigns (e.g. "KN4XYZ") happen to parse as a plausible-looking
+                    // but wrong grid square, so it must never be used as the overlay's origin.
+                    var setupLoc = (window.GLANCERF_SETUP_LOCATION || '').toString().trim();
+                    if (!setupLoc) return;
+                    var qth = parseCenter(setupLoc, NaN, NaN);
+                    if (!qth || isNaN(qth.lat) || isNaN(qth.lng)) return;
+                    var url = getMapApiBase() + '/api/live_spots/spots?filter_mode=' + encodeURIComponent(filterMode) +
+                        '&callsign_or_grid=' + encodeURIComponent(callsignOrGrid) + '&age_mins=' + ageMins;
+                    fetch(url).then(function(r) {
+                        if (!r.ok) return { spots: [] };
+                        return r.json();
+                    }).then(function(data) {
+                        var spots = (data && data.spots) ? data.spots : [];
+                        if (!spots.length) return;
+                        for (var i = 0; i < spots.length; i++) {
+                            var s = spots[i];
+                            var remoteLoc = (filterMode === 'sent')
+                                ? (s.receiverLocator || s.receiver_locator || s.rl)
+                                : (s.senderLocator || s.sender_locator || s.sl);
+                            if (!remoteLoc || (remoteLoc + '').trim().length < 2) continue;
+                            var remote = maidenheadToLatLng(remoteLoc);
+                            if (!remote) continue;
+                            var khz = (s.frequency && !isNaN(Number(s.frequency))) ? Number(s.frequency) / 1000 : null;
+                            var bandId = liveSpotsFreqToBand(khz);
+                            if (!liveSpotsIsBandEnabled(ms, bandId || '20')) continue;
+                            var color = liveSpotsGetBandColor(ms, bandId || '20');
+                            var pts = greatCirclePoints(qth.lat, qth.lng, remote.lat, remote.lng, 24);
+                            var segs = splitPathAtWrapBoundaries(pts);
+                            if (segs.length === 0) segs = [pts];
+                            segs.forEach(function(seg) {
+                                if (seg.length < 2) return;
+                                var linePts = seg.map(function(p) { return [p[0], p[1]]; });
+                                L.polyline(linePts, { color: color, weight: 2, opacity: 0.6, smoothFactor: 1 }).addTo(layerGroup);
+                            });
+                        }
+                        if (map.hasLayer(layerGroup)) layerGroup.bringToFront();
+                    }).catch(function() {});
+                });
             }
+            /* Each ota_programs instance is applied independently (see addAprsLocationsOverlay comment). */
             function addActivatorSpotsOverlay(map) {
                 if (typeof L === 'undefined') return;
-                var ms = getMergedModuleSettings('ota_programs');
-                var mapInstanceIdOta = map._glancerfMapInstanceId || '';
-                if (!targetMapMatchesModuleSetting(ms.target_map, mapInstanceIdOta)) {
+                if (!hasMapOverlayForModule('ota_programs')) {
                     if (map._activatorSpotsLayerGroup) {
                         map.removeLayer(map._activatorSpotsLayerGroup);
                         map._activatorSpotsLayerGroup = null;
                     }
                     return;
                 }
-                if (!(ms.show_on_map === true || ms.show_on_map === 'true' || ms.show_on_map === '1')) return;
-                if (!hasMapOverlayForModule('ota_programs')) {
+                var mapInstanceIdOta = map._glancerfMapInstanceId || '';
+                var instances = getAllModuleSettingsInstances('ota_programs');
+                var matching = instances.filter(function(ms) {
+                    if (!targetMapMatchesModuleSetting(ms.target_map, mapInstanceIdOta)) return false;
+                    return (ms.show_on_map === true || ms.show_on_map === 'true' || ms.show_on_map === '1');
+                });
+                if (matching.length === 0) {
                     if (map._activatorSpotsLayerGroup) {
                         map.removeLayer(map._activatorSpotsLayerGroup);
                         map._activatorSpotsLayerGroup = null;
@@ -1009,86 +1026,94 @@
                     layerGroup.addTo(map);
                 }
                 layerGroup.clearLayers();
-                var hp = 24, hf = 168;
-                try {
-                    var v = parseFloat(ms.cache_hours_past, 10);
-                    if (v >= 1 && v <= 720) hp = v;
-                } catch (e) {}
-                try {
-                    var v = parseFloat(ms.cache_hours_future, 10);
-                    if (v >= 1 && v <= 720) hf = v;
-                } catch (e) {}
-                var call = (ms.callsign_filter || '').trim();
-                var showSota = ms.show_sota_spots !== false && ms.show_sota_spots !== 'false' && ms.show_sota_spots !== '0';
-                var showSotaAlerts = ms.show_sota_alerts !== false && ms.show_sota_alerts !== 'false' && ms.show_sota_alerts !== '0';
-                var showPota = ms.show_pota_spots !== false && ms.show_pota_spots !== 'false' && ms.show_pota_spots !== '0';
-                var showWwff = ms.show_wwff_spots !== false && ms.show_wwff_spots !== 'false' && ms.show_wwff_spots !== '0';
-                var promises = [];
-                if (showSota || showSotaAlerts) {
-                    var sotaUrl = getMapApiBase() + '/api/sota/data?spots=' + (showSota ? 'true' : 'false') + '&alerts=' + (showSotaAlerts ? 'true' : 'false') + '&hours=' + hp + '&hours_future=' + hf;
-                    if (call) sotaUrl += '&callsign=' + encodeURIComponent(call);
-                    promises.push(fetch(sotaUrl).then(function(r) { return r.ok ? r.json() : { spots: [], alerts: [] }; }));
-                } else promises.push(Promise.resolve(null));
-                if (showPota) {
-                    var potaUrl = getMapApiBase() + '/api/pota/data?spots=true&hours=' + hp;
-                    if (call) potaUrl += '&callsign=' + encodeURIComponent(call);
-                    promises.push(fetch(potaUrl).then(function(r) { return r.ok ? r.json() : { spots: [] }; }));
-                } else promises.push(Promise.resolve(null));
-                if (showWwff) {
-                    var wwffUrl = getMapApiBase() + '/api/wwff/data?spots=true&hours=' + hp;
-                    if (call) wwffUrl += '&callsign=' + encodeURIComponent(call);
-                    promises.push(fetch(wwffUrl).then(function(r) { return r.ok ? r.json() : { spots: [] }; }));
-                } else promises.push(Promise.resolve(null));
-                Promise.all(promises).then(function(results) {
-                    var sotaData = (showSota || showSotaAlerts) ? results[0] : null;
-                    var potaData = showPota ? results[(showSota || showSotaAlerts) ? 1 : 0] : null;
-                    var wwffData = showWwff ? results[(showSota || showSotaAlerts ? 1 : 0) + (showPota ? 1 : 0)] : null;
-                    function addMarker(lat, lon, label, color) {
-                        if (isNaN(lat) || isNaN(lon)) return;
-                        var m = L.circleMarker([lat, lon], {
-                            radius: 5,
-                            fillColor: color,
-                            color: '#fff',
-                            weight: 1,
-                            fillOpacity: 0.9
-                        });
-                        m.bindTooltip(label, { permanent: false, direction: 'top', offset: [0, -4] });
-                        m.addTo(layerGroup);
-                    }
-                    if (sotaData) {
-                        var spots = (sotaData.spots || []).filter(function(s) { return s.latitude != null && s.longitude != null; });
-                        var alerts = (sotaData.alerts || []).filter(function(a) { return a.latitude != null && a.longitude != null; });
-                        spots.forEach(function(s) {
-                            addMarker(Number(s.latitude), Number(s.longitude), (s.activatorCallsign || '') + ' ' + (s.summitCode || s.summitDetails || ''), '#e74c3c');
-                        });
-                        alerts.forEach(function(a) {
-                            addMarker(Number(a.latitude), Number(a.longitude), (a.activatingCallsign || a.posterCallsign || '') + ' ' + (a.summitCode || a.summitDetails || ''), '#3498db');
-                        });
-                    }
-                    if (potaData && potaData.spots) {
-                        potaData.spots.forEach(function(s) {
-                            var lat = s.latitude != null ? Number(s.latitude) : NaN;
-                            var lon = s.longitude != null ? Number(s.longitude) : NaN;
-                            addMarker(lat, lon, (s.activator || '') + ' ' + (s.reference || s.name || ''), '#27ae60');
-                        });
-                    }
-                    if (wwffData && wwffData.spots) {
-                        wwffData.spots.forEach(function(s) {
-                            var lat = s.latitude != null ? Number(s.latitude) : NaN;
-                            var lon = s.longitude != null ? Number(s.longitude) : NaN;
-                            addMarker(lat, lon, (s.activator || '') + ' ' + (s.reference || s.reference_name || ''), '#e67e22');
-                        });
-                    }
-                    if (!map.hasLayer(layerGroup)) layerGroup.addTo(map);
-                    layerGroup.bringToFront();
-                }).catch(function() {});
+                function addMarker(lat, lon, label, color) {
+                    if (isNaN(lat) || isNaN(lon)) return;
+                    var m = L.circleMarker([lat, lon], {
+                        radius: 5,
+                        fillColor: color,
+                        color: '#fff',
+                        weight: 1,
+                        fillOpacity: 0.9
+                    });
+                    m.bindTooltip(escapeHtml(label), { permanent: false, direction: 'top', offset: [0, -4] });
+                    m.addTo(layerGroup);
+                }
+                matching.forEach(function(ms) {
+                    var hp = 24, hf = 168;
+                    try {
+                        var v = parseFloat(ms.cache_hours_past, 10);
+                        if (v >= 1 && v <= 720) hp = v;
+                    } catch (e) {}
+                    try {
+                        var v = parseFloat(ms.cache_hours_future, 10);
+                        if (v >= 1 && v <= 720) hf = v;
+                    } catch (e) {}
+                    var call = (ms.callsign_filter || '').trim();
+                    var showSota = ms.show_sota_spots !== false && ms.show_sota_spots !== 'false' && ms.show_sota_spots !== '0';
+                    var showSotaAlerts = ms.show_sota_alerts !== false && ms.show_sota_alerts !== 'false' && ms.show_sota_alerts !== '0';
+                    var showPota = ms.show_pota_spots !== false && ms.show_pota_spots !== 'false' && ms.show_pota_spots !== '0';
+                    var showWwff = ms.show_wwff_spots !== false && ms.show_wwff_spots !== 'false' && ms.show_wwff_spots !== '0';
+                    var promises = [];
+                    if (showSota || showSotaAlerts) {
+                        var sotaUrl = getMapApiBase() + '/api/sota/data?spots=' + (showSota ? 'true' : 'false') + '&alerts=' + (showSotaAlerts ? 'true' : 'false') + '&hours=' + hp + '&hours_future=' + hf;
+                        if (call) sotaUrl += '&callsign=' + encodeURIComponent(call);
+                        promises.push(fetch(sotaUrl).then(function(r) { return r.ok ? r.json() : { spots: [], alerts: [] }; }));
+                    } else promises.push(Promise.resolve(null));
+                    if (showPota) {
+                        var potaUrl = getMapApiBase() + '/api/pota/data?spots=true&hours=' + hp;
+                        if (call) potaUrl += '&callsign=' + encodeURIComponent(call);
+                        promises.push(fetch(potaUrl).then(function(r) { return r.ok ? r.json() : { spots: [] }; }));
+                    } else promises.push(Promise.resolve(null));
+                    if (showWwff) {
+                        var wwffUrl = getMapApiBase() + '/api/wwff/data?spots=true&hours=' + hp;
+                        if (call) wwffUrl += '&callsign=' + encodeURIComponent(call);
+                        promises.push(fetch(wwffUrl).then(function(r) { return r.ok ? r.json() : { spots: [] }; }));
+                    } else promises.push(Promise.resolve(null));
+                    Promise.all(promises).then(function(results) {
+                        var sotaData = (showSota || showSotaAlerts) ? results[0] : null;
+                        var potaData = showPota ? results[(showSota || showSotaAlerts) ? 1 : 0] : null;
+                        var wwffData = showWwff ? results[(showSota || showSotaAlerts ? 1 : 0) + (showPota ? 1 : 0)] : null;
+                        if (sotaData) {
+                            var spots = (sotaData.spots || []).filter(function(s) { return s.latitude != null && s.longitude != null; });
+                            var alerts = (sotaData.alerts || []).filter(function(a) { return a.latitude != null && a.longitude != null; });
+                            spots.forEach(function(s) {
+                                addMarker(Number(s.latitude), Number(s.longitude), (s.activatorCallsign || '') + ' ' + (s.summitCode || s.summitDetails || ''), '#e74c3c');
+                            });
+                            alerts.forEach(function(a) {
+                                addMarker(Number(a.latitude), Number(a.longitude), (a.activatingCallsign || a.posterCallsign || '') + ' ' + (a.summitCode || a.summitDetails || ''), '#3498db');
+                            });
+                        }
+                        if (potaData && potaData.spots) {
+                            potaData.spots.forEach(function(s) {
+                                var lat = s.latitude != null ? Number(s.latitude) : NaN;
+                                var lon = s.longitude != null ? Number(s.longitude) : NaN;
+                                addMarker(lat, lon, (s.activator || '') + ' ' + (s.reference || s.name || ''), '#27ae60');
+                            });
+                        }
+                        if (wwffData && wwffData.spots) {
+                            wwffData.spots.forEach(function(s) {
+                                var lat = s.latitude != null ? Number(s.latitude) : NaN;
+                                var lon = s.longitude != null ? Number(s.longitude) : NaN;
+                                addMarker(lat, lon, (s.activator || '') + ' ' + (s.reference || s.reference_name || ''), '#e67e22');
+                            });
+                        }
+                        if (!map.hasLayer(layerGroup)) layerGroup.addTo(map);
+                        layerGroup.bringToFront();
+                    }).catch(function() {});
+                });
             }
             /* sat_new: uses /api/satellite/locations (same cache as satellite_pass overlay).
                We only fetch and display sat_new locations when the map module is loaded (this script
-               runs only when map is in the layout and there are .grid-cell-map .map_container elements). */
-            function addSatNewLocationsOverlay(map) {
+               runs only when map is in the layout and there are .grid-cell-map .map_container elements).
+               Unlike the other overlays this has no separate module instance to target a map from, so
+               it's controlled per-map via the map's own show_new_satellites setting instead. */
+            function addSatNewLocationsOverlay(map, cfg) {
                 if (typeof L === 'undefined') return;
                 var layerGroup = map._satNewLocationsLayerGroup;
+                if (!cfg || !cfg.show_new_satellites) {
+                    if (layerGroup) layerGroup.clearLayers();
+                    return;
+                }
                 if (!layerGroup) {
                     layerGroup = L.layerGroup();
                     map._satNewLocationsLayerGroup = layerGroup;
@@ -1163,10 +1188,6 @@
                 var tm = satEntry.target_map;
                 if (tm === undefined || tm === null || String(tm).trim() === '') return true;
                 return String(tm) === String(mapInstanceId || '');
-            }
-            function getModuleSettings(moduleId) {
-                var instances = getAllModuleSettingsInstances(moduleId);
-                return instances.length > 0 ? instances[0] : {};
             }
             function mergeObjectsWithOrBooleans(acc, obj) {
                 if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return acc || {};
@@ -1483,7 +1504,7 @@
                 return div.innerHTML;
             }
             function splitPathAtWrapBoundaries(path) {
-                if (!path || path.length < 2) return path.length >= 2 ? [path] : [];
+                if (!path || path.length < 2) return [];
                 var segments = [];
                 var seg = [path[0]];
                 for (var i = 1; i < path.length; i++) {
@@ -1683,7 +1704,7 @@
                 if (hasMapOverlayForModule('live_spots')) addLiveSpotsLinesOverlay(map);
                 if (hasMapOverlayForModule('ota_programs')) addActivatorSpotsOverlay(map);
                 addQthMarkerOverlay(map);
-                addSatNewLocationsOverlay(map);
+                addSatNewLocationsOverlay(map, cfg);
                 addSatellitePassLocationsOverlay(map);
                 addSatellitePassTracksOverlay(map);
             }
@@ -1703,9 +1724,31 @@
                     el._map.setView(el._map.getCenter(), adjZoom);
                 }
             }
+            function mapCellRawSettings(el) {
+                var cell = el.closest('.grid-cell-map');
+                return (cell && typeof window.glancerfSettingsForElement === 'function') ? (window.glancerfSettingsForElement(cell) || {}) : {};
+            }
+            function mapBackgroundUpdatesAllowed(el) {
+                return typeof window.glancerfBackgroundUpdatesAllowed !== 'function' || window.glancerfBackgroundUpdatesAllowed(el, mapCellRawSettings(el));
+            }
+            /* Same overlay refresh as the periodic PROPAGATION_REFRESH_MS tick below, factored out
+               so a map that comes into view (glancerf_stack_slot_change) can catch up immediately
+               instead of waiting up to PROPAGATION_REFRESH_MS for its next scheduled tick. */
+            function refreshMapOverlaysTick(el) {
+                if (!el._map || !mapBackgroundUpdatesAllowed(el)) return;
+                var cfg = getMapSettings(el);
+                if (cfg.show_aurora) addAuroraOverlay(el._map, cfg);
+                if (cfg.propagation_source && cfg.propagation_source !== 'none') addPropagationOverlay(el._map, cfg);
+                if (hasMapOverlayForModule('aprs')) addAprsLocationsOverlay(el._map, cfg);
+                if (hasMapOverlayForModule('live_spots')) addLiveSpotsLinesOverlay(el._map);
+                if (hasMapOverlayForModule('ota_programs')) addActivatorSpotsOverlay(el._map);
+                addSatNewLocationsOverlay(el._map, cfg);
+                addSatellitePassLocationsOverlay(el._map);
+            }
             window.addEventListener('glancerf_stack_slot_change', function () {
                 document.querySelectorAll('.grid-cell-map .map_container').forEach(function (el) {
                     syncMapSize(el);
+                    refreshMapOverlaysTick(el);
                 });
             });
             function initMaps() {
@@ -1745,15 +1788,7 @@
                     window._glancerfPropagationRefreshStarted = true;
                     setInterval(function() {
                         document.querySelectorAll('.grid-cell-map .map_container').forEach(function(el) {
-                            if (!el._map) return;
-                            var cfg = getMapSettings(el);
-                            if (cfg.show_aurora) addAuroraOverlay(el._map, cfg);
-                            if (cfg.propagation_source && cfg.propagation_source !== 'none') addPropagationOverlay(el._map, cfg);
-                            if (hasMapOverlayForModule('aprs')) addAprsLocationsOverlay(el._map, cfg);
-                            if (hasMapOverlayForModule('live_spots')) addLiveSpotsLinesOverlay(el._map);
-                            if (hasMapOverlayForModule('ota_programs')) addActivatorSpotsOverlay(el._map);
-                            addSatNewLocationsOverlay(el._map);
-                            addSatellitePassLocationsOverlay(el._map);
+                            refreshMapOverlaysTick(el);
                         });
                     }, PROPAGATION_REFRESH_MS);
                 }
@@ -1763,7 +1798,7 @@
                     setInterval(function() {
                         if (!hasMapOverlayForModule('aprs')) return;
                         document.querySelectorAll('.grid-cell-map .map_container').forEach(function(el) {
-                            if (!el._map) return;
+                            if (!el._map || !mapBackgroundUpdatesAllowed(el)) return;
                             var cfg = getMapSettings(el);
                             addAprsLocationsOverlay(el._map, cfg);
                         });
@@ -1771,7 +1806,7 @@
                     document.addEventListener('glancerf_aprs_update', function() {
                         if (!hasMapOverlayForModule('aprs')) return;
                         document.querySelectorAll('.grid-cell-map .map_container').forEach(function(el) {
-                            if (!el._map) return;
+                            if (!el._map || !mapBackgroundUpdatesAllowed(el)) return;
                             var cfg = getMapSettings(el);
                             addAprsLocationsOverlay(el._map, cfg);
                         });
@@ -1783,7 +1818,7 @@
                     setInterval(function() {
                         if (!hasSatellitePassOverlay()) return;
                         document.querySelectorAll('.grid-cell-map .map_container').forEach(function(el) {
-                            if (!el._map) return;
+                            if (!el._map || !mapBackgroundUpdatesAllowed(el)) return;
                             addSatellitePassLocationsOverlay(el._map);
                         });
                     }, 5000);
@@ -1799,7 +1834,7 @@
                     setInterval(function() {
                         if (!hasSatellitePassOverlay()) return;
                         document.querySelectorAll('.grid-cell-map .map_container').forEach(function(el) {
-                            if (!el._map) return;
+                            if (!el._map || !mapBackgroundUpdatesAllowed(el)) return;
                             addSatellitePassTracksOverlay(el._map);
                         });
                     }, 5 * 60 * 1000);

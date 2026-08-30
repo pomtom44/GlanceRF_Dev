@@ -89,13 +89,21 @@ class TTLCache:
             return value
         with self._populate_locks_lock:
             key_lock = self._populate_locks.setdefault(key, threading.Lock())
-        with key_lock:
-            value = self.get(key)
-            if value is not None:
-                return value
-            computed = factory()
-            self.set(key, computed, ttl_seconds)
-            return computed
+        try:
+            with key_lock:
+                value = self.get(key)
+                if value is not None:
+                    return value
+                computed = factory()
+                self.set(key, computed, ttl_seconds)
+                return computed
+        finally:
+            # Drop this key's lock once nobody is using it, so _populate_locks doesn't
+            # grow forever. Only remove it if it's still the same lock object we used -
+            # a concurrent caller may have already cleaned up and replaced it.
+            with self._populate_locks_lock:
+                if self._populate_locks.get(key) is key_lock:
+                    del self._populate_locks[key]
 
     def invalidate_prefix(self, prefix: str) -> int:
         """Remove all entries whose key starts with prefix. Returns count removed."""

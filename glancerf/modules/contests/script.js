@@ -20,6 +20,21 @@
         }
     }
 
+    function escapeHtml(s) {
+        if (!s) return '';
+        return String(s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    function isAllowedUrl(url) {
+        if (!url || typeof url !== 'string') return false;
+        var t = url.trim().toLowerCase();
+        return t.indexOf('http://') === 0 || t.indexOf('https://') === 0;
+    }
+
     function getCellSettings(cell) {
         var allSettings = window.GLANCERF_MODULE_SETTINGS || {};
         var r = cell.getAttribute('data-row');
@@ -75,17 +90,18 @@
         slice.forEach(function(d) {
             var item = document.createElement('div');
             item.className = 'contests_item';
-            var title = (d.title || '').trim();
+            var title = escapeHtml((d.title || '').trim());
             var url = (d.url || '').trim();
             var dates = formatDateRange(d.start_utc, d.end_utc);
-            var info = (d.info || '').trim();
-            var source = (d.source || '').trim();
-            var titleHtml = url ? '<a href="' + url.replace(/"/g, '&quot;') + '" target="_blank" rel="noopener">' + title + '</a>' : title;
+            var infoRaw = (d.info || '').trim();
+            var info = escapeHtml(infoRaw.substring(0, 80) + (infoRaw.length > 80 ? '...' : ''));
+            var source = escapeHtml((d.source || '').trim());
+            var titleHtml = isAllowedUrl(url) ? '<a href="' + escapeHtml(url) + '" target="_blank" rel="noopener">' + title + '</a>' : title;
             item.innerHTML =
                 '<span class="contests_name">' + titleHtml + '</span>' +
                 (source ? ' <span class="contests_source" title="Source">[' + source + ']</span>' : '') +
                 '<br><span class="contests_dates">' + dates + '</span>' +
-                (info ? '<br><span class="contests_info">' + info.substring(0, 80) + (info.length > 80 ? '...' : '') + '</span>' : '');
+                (info ? '<br><span class="contests_info">' + info + '</span>' : '');
             listEl.appendChild(item);
         });
         listEl.scrollTop = 0;
@@ -100,6 +116,7 @@
         if (!listEl) return;
 
         var settings = getCellSettings(cell);
+        if (typeof window.glancerfBackgroundUpdatesAllowed === 'function' && !window.glancerfBackgroundUpdatesAllowed(cell, settings)) return;
         var maxEntries = 20;
         try {
             var n = parseInt(settings.max_entries, 10);
@@ -259,4 +276,5 @@
     runScrollToggles();
     setInterval(run, 25 * 1000);
     setInterval(runScrollToggles, 5000);
+    window.addEventListener('glancerf_stack_slot_change', run);
 })();

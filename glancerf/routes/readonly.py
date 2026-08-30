@@ -97,7 +97,7 @@ def _readonly_notice_html(
 
 
 def _readonly_setup_required_page(request: Request, current_config: dict, cache_bust: str) -> str:
-    """Themed notice when read-only cannot show a dashboard (first run or layout has no modules)."""
+    """Themed notice for the genuine first-run case (setup not yet completed)."""
     main_port = _main_port_from_config(current_config)
     main_url = _main_base_url(request, main_port)
     return _readonly_notice_html(
@@ -191,20 +191,25 @@ def register_readonly_routes(readonly_app: FastAPI) -> None:
         module_settings = current_config.get("module_settings") or {}
         has_any_module = bool(collect_module_ids_from_layout(layout, module_settings))
         if not has_any_module:
-            return HTMLResponse(
-                content=_readonly_setup_required_page(request, current_config, cache_bust),
-                status_code=200,
+            # Setup is already finished (this is not the first_run case above) - the grid just
+            # has no modules assigned yet. Render through the normal connected page (WebSocket +
+            # readonly.js) rather than a bare notice, so this view auto-reloads the moment modules
+            # are added on the main interface instead of needing a manual refresh.
+            grid_html = (
+                '<div class="empty-state-message">'
+                'No modules configured yet. Add modules to the layout on the main interface.</div>'
             )
-
-        grid_html = build_grid_html(
-            layout,
-            cell_spans,
-            merged_cells,
-            grid_columns,
-            grid_rows,
-            module_settings=module_settings,
-        )
-        grid_css = f"grid-template-columns: repeat({grid_columns}, minmax(0, 1fr)); grid-template-rows: repeat({grid_rows}, minmax(0, 1fr));"
+            grid_css = "display: flex; align-items: center; justify-content: center; min-height: 100%;"
+        else:
+            grid_html = build_grid_html(
+                layout,
+                cell_spans,
+                merged_cells,
+                grid_columns,
+                grid_rows,
+                module_settings=module_settings,
+            )
+            grid_css = f"grid-template-columns: repeat({grid_columns}, minmax(0, 1fr)); grid-template-rows: repeat({grid_rows}, minmax(0, 1fr));"
         map_overlay_layout = current_config.get("map_overlay_layout") or []
         if not isinstance(map_overlay_layout, list):
             map_overlay_layout = []
@@ -212,10 +217,16 @@ def register_readonly_routes(readonly_app: FastAPI) -> None:
         overlay_modules = collect_module_ids_from_layout(layout, module_settings) | set(map_overlay_layout)
         modules_settings_schema = {}
         show_title = {"id": "show_title", "label": "Show module title", "type": "checkbox", "default": True}
+        background_updates_setting = {
+            "id": "background_updates",
+            "label": "Keep updating while hidden in a rotating cell",
+            "type": "checkbox",
+            "default": True,
+        }
         for m in get_modules():
             mid = m.get("id", "")
             if mid:
-                modules_settings_schema[mid] = [show_title] + list(m.get("settings") or [])
+                modules_settings_schema[mid] = [show_title, background_updates_setting] + list(m.get("settings") or [])
         map_instances = collect_map_instance_list(layout, module_settings, grid_rows, grid_columns)
         inject_map_target_settings(modules_settings_schema, map_instances)
         map_instance_list_json = json.dumps(map_instances)

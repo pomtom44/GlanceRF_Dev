@@ -75,6 +75,10 @@
     }
 
     function updateCell(cell) {
+        if (typeof window.glancerfBackgroundUpdatesAllowed === 'function') {
+            var ms = (typeof window.glancerfSettingsForElement === 'function') ? (window.glancerfSettingsForElement(cell) || {}) : {};
+            if (!window.glancerfBackgroundUpdatesAllowed(cell, ms)) return;
+        }
         showLoading(cell, true);
         fetch('/api/gps/stats')
             .then(function(r) { return r.json(); })
@@ -100,4 +104,5 @@
 
     runAll();
     setInterval(runAll, GPS_UPDATE_MS);
+    window.addEventListener('glancerf_stack_slot_change', runAll);
 })();

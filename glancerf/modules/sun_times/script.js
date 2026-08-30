@@ -185,6 +185,7 @@
         });
     }
     function updateCell(cell, cellKey, ms) {
+        if (typeof window.glancerfBackgroundUpdatesAllowed === 'function' && !window.glancerfBackgroundUpdatesAllowed(cell, ms)) return;
         var locStr = (ms.location || window.GLANCERF_SETUP_LOCATION || '').toString().trim();
         var coord = parseLocation(locStr);
         if (!coord) {
@@ -238,10 +239,14 @@
             var r = cell.getAttribute('data-row');
             var c = cell.getAttribute('data-col');
             var cellKey = (r != null && c != null) ? r + '_' + c : '';
-            var ms = (cellKey && allSettings[cellKey]) ? allSettings[cellKey] : {};
-            updateCell(cell, cellKey, ms);
+            var slotKey = cell.getAttribute('data-settings-key') || cellKey;
+            var ms = (typeof window.glancerfSettingsForElement === 'function')
+                ? (window.glancerfSettingsForElement(cell) || {})
+                : ((cellKey && allSettings[cellKey]) ? allSettings[cellKey] : {});
+            updateCell(cell, slotKey, ms);
         });
     }
     runAll();
     setInterval(runAll, 60 * 60 * 1000);
+    window.addEventListener('glancerf_stack_slot_change', runAll);
 })();

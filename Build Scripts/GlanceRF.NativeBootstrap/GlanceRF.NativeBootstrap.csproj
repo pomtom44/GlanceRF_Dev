@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net481</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>GlanceRF-Install-Windows</AssemblyName>
+    <RootNamespace>GlanceRF.NativeBootstrap</RootNamespace>
+    <ApplicationHighDpiMode>SystemAware</ApplicationHighDpiMode>
+    <ApplicationIcon>..\..\logos\logo.ico</ApplicationIcon>
+    <DebugType>none</DebugType>
+
+    <!-- Windows file properties / identity signals (helps reduce generic ML/heuristic noise) -->
+    <AssemblyTitle>GlanceRF Setup</AssemblyTitle>
+    <Product>GlanceRF</Product>
+    <Company>ZL4ST</Company>
+    <Description>GlanceRF Windows bootstrap installer (downloads latest sources and launches the full installer).</Description>
+    <Copyright>Copyright © ZL4ST</Copyright>
+
+    <!-- Bump when you want a new FileVersion/ProductVersion without changing code -->
+    <Version>1.0.0</Version>
+    <FileVersion>1.0.0.0</FileVersion>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <InformationalVersion>1.0.0</InformationalVersion>
+  </PropertyGroup>
+
+  <!-- Pass -p:BootstrapVariant=Dev on publish for GlanceRF_Dev ZIP + DEV titles + GlanceRF-Dev-Install-Windows.exe -->
+  <PropertyGroup Condition="'$(BootstrapVariant)' == 'Dev'">
+    <AssemblyName>GlanceRF-Dev-Install-Windows</AssemblyName>
+    <DefineConstants>$(DefineConstants);GLANCERF_BOOTSTRAP_DEV</DefineConstants>
+    <AssemblyTitle>GlanceRF Setup DEV</AssemblyTitle>
+    <Product>GlanceRF Dev</Product>
+  </PropertyGroup>
+</Project>

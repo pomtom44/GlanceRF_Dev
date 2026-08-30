@@ -1,12 +1,8 @@
 (function() {
-    function getSettings(containerEl) {
-        var cell = containerEl.closest('.grid-cell-rss');
-        if (!cell) return {};
-        var allSettings = window.GLANCERF_MODULE_SETTINGS || {};
-        var r = cell.getAttribute('data-row');
-        var c = cell.getAttribute('data-col');
-        var key = (r != null && c != null) ? r + '_' + c : '';
-        return (key && allSettings[key]) ? allSettings[key] : {};
+    function isAllowedUrl(url) {
+        if (!url || typeof url !== 'string') return false;
+        var t = url.trim().toLowerCase();
+        return t.indexOf('http://') === 0 || t.indexOf('https://') === 0;
     }
     function parseNum(val, defaultVal, minVal, maxVal) {
         var n = parseInt(val, 10);
@@ -51,7 +47,7 @@
         items.forEach(function(item) {
             var li = document.createElement('li');
             var title = (item.title || '').trim() || '(No title)';
-            if (item.link) {
+            if (isAllowedUrl(item.link)) {
                 var a = document.createElement('a');
                 a.href = item.link;
                 a.target = '_blank';
@@ -69,6 +65,7 @@
         });
     }
     function updateCell(cell, cellKey, ms, forceRefresh) {
+        if (!forceRefresh && typeof window.glancerfBackgroundUpdatesAllowed === 'function' && !window.glancerfBackgroundUpdatesAllowed(cell, ms)) return;
         var url = (ms.rss_url || '').toString().trim();
         if (!url) {
             showError(cell, 'Set RSS feed URL');
@@ -108,10 +105,14 @@
             var r = cell.getAttribute('data-row');
             var c = cell.getAttribute('data-col');
             var cellKey = (r != null && c != null) ? r + '_' + c : '';
-            var ms = (cellKey && allSettings[cellKey]) ? allSettings[cellKey] : {};
-            updateCell(cell, cellKey, ms, false);
+            var slotKey = cell.getAttribute('data-settings-key') || cellKey;
+            var ms = (typeof window.glancerfSettingsForElement === 'function')
+                ? (window.glancerfSettingsForElement(cell) || {})
+                : ((cellKey && allSettings[cellKey]) ? allSettings[cellKey] : {});
+            updateCell(cell, slotKey, ms, false);
         });
     }
     runAll();
     setInterval(runAll, 60 * 1000);
+    window.addEventListener('glancerf_stack_slot_change', runAll);
 })();

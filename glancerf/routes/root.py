@@ -83,10 +83,16 @@ def register_root(app):
         module_settings_json = json.dumps(expand_module_settings_for_client(module_settings))
         modules_settings_schema = {}
         show_title = {"id": "show_title", "label": "Show module title", "type": "checkbox", "default": True}
+        background_updates_setting = {
+            "id": "background_updates",
+            "label": "Keep updating while hidden in a rotating cell",
+            "type": "checkbox",
+            "default": True,
+        }
         for m in get_modules():
             mid = m.get("id", "")
             if mid:
-                modules_settings_schema[mid] = [show_title] + list(m.get("settings") or [])
+                modules_settings_schema[mid] = [show_title, background_updates_setting] + list(m.get("settings") or [])
         map_instances = collect_map_instance_list(layout, module_settings, grid_rows, grid_columns)
         inject_map_target_settings(modules_settings_schema, map_instances)
         modules_settings_schema_json = json.dumps(modules_settings_schema)

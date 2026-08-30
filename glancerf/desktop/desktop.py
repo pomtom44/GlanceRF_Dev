@@ -186,6 +186,7 @@ def run_desktop(port: int = 8080, server_thread=None, splash_root=None):
     _was_maximized_before_fullscreen = False
     browser_ref = [None]
     aspect_ratio_ref = [aspect_ratio]
+    grid_dims_ref = [(config.get("grid_columns"), config.get("grid_rows"))]
 
     def _save_window_geometry():
         geo = win.geometry()
@@ -243,10 +244,12 @@ def run_desktop(port: int = 8080, server_thread=None, splash_root=None):
                 aspect_ratio_ref[0] = new_ar
                 config.set("aspect_ratio", new_ar)
                 changed = True
-            cur_cols, cur_rows = config.get("grid_columns"), config.get("grid_rows")
-            if cur_cols is not None and cur_rows is not None:
-                if new_cols != cur_cols or new_rows != cur_rows:
-                    changed = True
+            # get_config() is a process-wide singleton, so new_cfg is config - comparing
+            # against config.get(...) here would compare a value to itself and never fire.
+            # Track the last-seen dimensions separately instead.
+            if (new_cols, new_rows) != grid_dims_ref[0]:
+                grid_dims_ref[0] = (new_cols, new_rows)
+                changed = True
             if changed and browser_ref[0] is not None:
                 browser_ref[0].reload()
         except Exception:

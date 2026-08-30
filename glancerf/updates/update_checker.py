@@ -16,7 +16,7 @@ from glancerf.config import get_config, get_logger
 
 _log = get_logger("update_checker")
 
-GITHUB_RELEASES_URL = "https://api.github.com/repos/pomtom44/GlanceRF/releases/latest"
+GITHUB_RELEASES_URL = "https://api.github.com/repos/pomtom44/GlanceRF_Dev/releases/latest"
 GITHUB_HEADERS = {"Accept": "application/vnd.github.v3+json", "User-Agent": "GlanceRF-update-checker"}
 
 

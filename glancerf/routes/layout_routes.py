@@ -302,12 +302,18 @@ def register_layout_routes(app: FastAPI, connection_manager: ConnectionManager):
 
         modules_settings_schema = {}
         show_title_setting = {"id": "show_title", "label": "Show module title", "type": "checkbox", "default": True}
+        background_updates_setting = {
+            "id": "background_updates",
+            "label": "Keep updating while hidden in a rotating cell",
+            "type": "checkbox",
+            "default": True,
+        }
         for m in get_modules():
             mid = m.get("id", "")
             if not mid:
                 continue
             existing = list(m.get("settings") or [])
-            modules_settings_schema[mid] = [show_title_setting] + existing
+            modules_settings_schema[mid] = [show_title_setting, background_updates_setting] + existing
 
         map_instances = collect_map_instance_list(layout, module_settings_by_cell, grid_rows, grid_columns)
         inject_map_target_settings(modules_settings_schema, map_instances)
@@ -477,8 +483,17 @@ def register_layout_routes(app: FastAPI, connection_manager: ConnectionManager):
                                         status_code=400,
                                     )
                         merged = dict(settings)
-                        if isinstance(merged.get("slots"), list) and len(merged["slots"]) > 0:
+                        slots_val = merged.get("slots")
+                        if isinstance(slots_val, list) and len(slots_val) > 0:
                             merged["rotate_animation"] = parse_rotate_animation(merged)
+                        elif isinstance(slots_val, list) and len(slots_val) == 0:
+                            # Empty explicit slots list is ambiguous with "legacy, no slots
+                            # key" in normalize_cell_slots() (falls back to the grid's
+                            # layout[r][c] module id and can resurrect a stale module).
+                            # Normalize it away here instead of persisting slots: [].
+                            merged.pop("slots", None)
+                            merged.pop("rotate_seconds", None)
+                            merged.pop("rotate_animation", None)
                         current[cell_key] = merged
                     else:
                         current[cell_key] = {**(current.get(cell_key) or {}), **settings}

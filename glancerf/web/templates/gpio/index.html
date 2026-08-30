@@ -129,25 +129,9 @@ __GLANCERF_MENU_PANEL__
                       showMessage('Save failed.', true);
                   });
             });
-
-            document.addEventListener('keydown', function(event) {
-                var isInputFocused = document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'SELECT' || document.activeElement.tagName === 'TEXTAREA');
-                if (isInputFocused) return;
-                if (event.key === 'm' || event.key === 'M') {
-                    event.preventDefault();
-                    var menu = document.getElementById('glancerf-menu');
-                    if (menu) menu.classList.toggle('open');
-                }
-                if (event.key === 'Escape') {
-                    var menu = document.getElementById('glancerf-menu');
-                    if (menu && menu.classList.contains('open')) { menu.classList.remove('open'); event.preventDefault(); }
-                }
-            });
-            var overlay = document.getElementById('glancerf-menu-overlay');
-            if (overlay) overlay.addEventListener('click', function() {
-                var m = document.getElementById('glancerf-menu');
-                if (m) m.classList.remove('open');
-            });
+            // Menu open/close (M key, right-click, overlay click, Escape) is handled by
+            // menu.js, loaded above - do not duplicate its listeners here. A second set of
+            // keydown handlers previously double-toggled the menu, so pressing M did nothing.
         })();
     </script>
 </body>

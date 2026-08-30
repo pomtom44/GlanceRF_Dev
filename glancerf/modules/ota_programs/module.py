@@ -55,5 +55,4 @@ MODULE = {
         },
         {"id": "show_on_map", "label": "Show on map", "type": "checkbox", "default": False},
     ],
-    "cache_warmer": True,
 }

@@ -5,9 +5,40 @@
 set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Run a command quietly with a spinner; returns command exit code
+run_quiet() {
+    local msg="$1"
+    shift
+    local spinstr='|/-\'
+    ("$@" >/dev/null 2>&1) &
+    local pid=$!
+    while kill -0 "$pid" 2>/dev/null; do
+        local temp=${spinstr#?}
+        printf "\r%s [%c] " "$msg" "$spinstr"
+        spinstr=$temp${spinstr%"$temp"}
+        sleep 0.1
+    done
+    wait $pid
+    local ret=$?
+    if [ $ret -eq 0 ]; then
+        printf "\r%s done\n" "$msg"
+    else
+        printf "\r%s failed\n" "$msg"
+    fi
+    return $ret
+}
+
 # macOS only
 if [ "$(uname -s)" != "Darwin" ]; then
     echo "This installer is for macOS only."
+    exit 1
+fi
+
+# Do not run as root or with sudo
+if [ "$(id -u)" -eq 0 ]; then
+    echo "Do not run this script as root or with sudo."
+    echo "Run as your normal user."
+    echo "  Example: ./install-mac.sh"
     exit 1
 fi
 
@@ -25,7 +56,7 @@ if [ ! -f "$PROJECT_DIR/run.py" ]; then
     PROJECT_DIR="$(pwd)"
 fi
 if [ ! -f "$PROJECT_DIR/run.py" ]; then
-    echo "Error: run.py not found. Run this script from the Project folder or Project/installers."
+    echo "Error: run.py not found. Run this script from the GlanceRF folder or GlanceRF/installers."
     exit 1
 fi
 echo "Project folder: $PROJECT_DIR"
@@ -118,12 +149,20 @@ echo ""
 # 1. Install Python via Homebrew if needed
 if [ "$NEED_PYTHON_INSTALL" = true ]; then
     if command -v brew &>/dev/null; then
-        brew install python
-        if command -v python3 &>/dev/null && python3 -c "import sys; sys.exit(0 if sys.version_info >= (3, 8) else 1)" 2>/dev/null; then
-            PYTHON3="python3"
-        else
-            BREW_PY="$(brew --prefix python 2>/dev/null)/bin/python3"
-            [ -x "$BREW_PY" ] && PYTHON3="$BREW_PY" || PYTHON3="python3"
+        run_quiet "Installing Python via Homebrew" brew install python
+        BREW_PY="$(brew --prefix python 2>/dev/null)/bin/python3"
+        PYTHON3=""
+        for cmd in python3 "$BREW_PY" python3.12 python3.11 python3.10 python3.9; do
+            if [ -n "$cmd" ] && command -v "$cmd" &>/dev/null; then
+                if "$cmd" -c "import sys; sys.exit(0 if sys.version_info >= (3, 8) else 1)" 2>/dev/null; then
+                    PYTHON3="$cmd"
+                    break
+                fi
+            fi
+        done
+        if [ -z "$PYTHON3" ]; then
+            echo "Python 3.8 or higher not found after Homebrew install."
+            exit 1
         fi
     else
         echo "Homebrew not found. Install from https://brew.sh or Python from https://www.python.org/downloads/"
@@ -148,34 +187,26 @@ if [ -d "$VENV_DIR" ] && ! "$VENV_PYTHON" -m pip --version &>/dev/null 2>&1; the
 fi
 
 if [ ! -d "$VENV_DIR" ]; then
-    echo "Creating virtual environment..."
-    if ! "$PYTHON3" -m venv "$VENV_DIR"; then
+    if ! run_quiet "Creating virtual environment" "$PYTHON3" -m venv "$VENV_DIR"; then
         echo "Failed to create venv."
         exit 1
     fi
 fi
 echo ""
 
-# --- 3. Install dependencies (based on mode) ---
-echo "Installing dependencies..."
-
-if [ "$DESKTOP_MODE" = "headless" ]; then
-    HEADLESS_REQ="$PROJECT_DIR/requirements/requirements-mac.txt"
-    if [ -f "$HEADLESS_REQ" ]; then
-        "$VENV_PYTHON" -m pip install -r "$HEADLESS_REQ" -q 2>/dev/null || "$VENV_PYTHON" -m pip install -r "$HEADLESS_REQ"
+# --- 3. Install dependencies ---
+install_deps() {
+    if [ -f "$REQ_FILE" ]; then
+        "$VENV_PYTHON" -m pip install -r "$REQ_FILE" -q
     else
-        "$VENV_PYTHON" -m pip install pystray Pillow -q 2>/dev/null || "$VENV_PYTHON" -m pip install pystray Pillow
+        "$VENV_PYTHON" -m pip install pystray Pillow -q
     fi
-else
-    # browser or terminal mode
-    HEADLESS_REQ="$PROJECT_DIR/requirements/requirements-mac.txt"
-    if [ -f "$HEADLESS_REQ" ]; then
-        "$VENV_PYTHON" -m pip install -r "$HEADLESS_REQ" -q 2>/dev/null || "$VENV_PYTHON" -m pip install -r "$HEADLESS_REQ"
-    else
-        "$VENV_PYTHON" -m pip install pystray Pillow -q 2>/dev/null || "$VENV_PYTHON" -m pip install pystray Pillow
-    fi
+}
+REQ_FILE="$PROJECT_DIR/requirements/requirements-mac.txt"
+if ! run_quiet "Installing dependencies" install_deps; then
+    echo "Retrying with full output..."
+    install_deps || exit 1
 fi
-echo "Dependencies OK."
 echo ""
 
 # --- 4. Update config ---
@@ -356,7 +387,8 @@ if [ "$INSTALL_SERVICE" = true ]; then
     echo "  Start server: launchctl load $PLIST_SERVER"
     echo ""
 elif [ "$WANT_STARTUP" = true ]; then
-    echo "GlanceRF started. It will also run at next logon."
+    PORT="$("$VENV_PYTHON" -c "import json; c=json.load(open('$PROJECT_DIR/glancerf_config.json')); print(c.get('port',8080))" 2>/dev/null || echo "8080")"
+    echo "GlanceRF started. Open http://localhost:$PORT in your browser. It will also run at next logon."
     echo "  Stop:  launchctl unload $PLIST_SERVER"
     echo "  Start: launchctl load $PLIST_SERVER"
     echo ""

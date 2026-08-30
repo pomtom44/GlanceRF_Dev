@@ -158,6 +158,7 @@
     if (!wrap || !listEl) return;
 
     var settings = getCellSettings(cell);
+    if (typeof window.glancerfBackgroundUpdatesAllowed === 'function' && !window.glancerfBackgroundUpdatesAllowed(cell, settings)) return;
     var showSotaSpots = settings.show_sota_spots !== false && settings.show_sota_spots !== 'false' && settings.show_sota_spots !== '0';
     var showSotaAlerts = settings.show_sota_alerts !== false && settings.show_sota_alerts !== 'false' && settings.show_sota_alerts !== '0';
     var showPotaSpots = settings.show_pota_spots !== false && settings.show_pota_spots !== 'false' && settings.show_pota_spots !== '0';
@@ -350,4 +351,5 @@
 
   run();
   setInterval(run, 60000);
+  window.addEventListener('glancerf_stack_slot_change', run);
 })();

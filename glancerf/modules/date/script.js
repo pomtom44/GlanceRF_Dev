@@ -31,10 +31,14 @@
         var now = new Date();
         var allSettings = window.GLANCERF_MODULE_SETTINGS || {};
         document.querySelectorAll('.grid-cell-date').forEach(function(cell) {
-            var r = cell.getAttribute('data-row');
-            var c = cell.getAttribute('data-col');
-            var cellKey = (r != null && c != null) ? r + '_' + c : '';
-            var ms = (cellKey && allSettings[cellKey]) ? allSettings[cellKey] : {};
+            var ms = (typeof window.glancerfSettingsForElement === 'function')
+                ? (window.glancerfSettingsForElement(cell) || {})
+                : (function() {
+                    var r = cell.getAttribute('data-row');
+                    var c = cell.getAttribute('data-col');
+                    var cellKey = (r != null && c != null) ? r + '_' + c : '';
+                    return (cellKey && allSettings[cellKey]) ? allSettings[cellKey] : {};
+                })();
             var fmt = (ms.date_format || 'dmy').toLowerCase();
             var el = cell.querySelector('.date_value');
             if (el) el.textContent = formatDate(now, fmt);

@@ -21,10 +21,12 @@ _store: defaultdict = defaultdict(list)
 
 
 def _get_client_ip(request: Request) -> str:
-    """Extract client IP from request, respecting X-Forwarded-For."""
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
+    """
+    Extract client IP from the actual TCP connection.
+    Deliberately ignores X-Forwarded-For: GlanceRF has no concept of a trusted
+    reverse proxy, so honoring that header would let any client bypass the
+    rate limit by sending a different value on each request.
+    """
     return request.client.host if request.client else "unknown"
 
 

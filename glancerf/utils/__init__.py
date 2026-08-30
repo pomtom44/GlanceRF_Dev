@@ -21,15 +21,6 @@ from glancerf.utils.utils import get_local_ip
 from glancerf.utils.view_utils import build_merged_cells_from_spans, build_grid_html
 from glancerf.utils.location import parse_location, get_effective_location, get_effective_location_string
 from glancerf.utils.numpy_fallback import try_numpy_baseline_fallback
-from glancerf.utils.grid_layout import (
-    GRID_LAYOUTS,
-    get_grid_layout_list,
-    get_grid_layouts_for_aspect_ratio,
-    get_grid_layout_name,
-    get_grid_layout_css,
-    is_valid_grid_layout,
-    get_grid_layout_preview_svg,
-)
 
 __all__ = [
     "get_current_time",
@@ -52,11 +43,4 @@ __all__ = [
     "get_effective_location",
     "get_effective_location_string",
     "try_numpy_baseline_fallback",
-    "GRID_LAYOUTS",
-    "get_grid_layout_list",
-    "get_grid_layouts_for_aspect_ratio",
-    "get_grid_layout_name",
-    "get_grid_layout_css",
-    "is_valid_grid_layout",
-    "get_grid_layout_preview_svg",
 ]

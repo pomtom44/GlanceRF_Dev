@@ -12,7 +12,14 @@ from glancerf.utils.cache import get_cache
 async def warm(settings: dict, config: Any) -> None:
     """Fetch contests and fill cache. No-op if not configured; same cache key as API."""
     enabled_raw = settings.get("enabled_sources")
-    enabled = [s.strip() for s in (enabled_raw or "").split(",") if s.strip()] if enabled_raw else None
+    enabled = None
+    if enabled_raw:
+        try:
+            parsed_sources = json.loads(enabled_raw) if isinstance(enabled_raw, str) else enabled_raw
+            if isinstance(parsed_sources, list):
+                enabled = [s.strip() for s in parsed_sources if isinstance(s, str) and s.strip()] or None
+        except (json.JSONDecodeError, TypeError):
+            enabled = None
     custom_raw = settings.get("custom_sources")
     custom = None
     if custom_raw:

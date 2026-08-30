@@ -243,8 +243,11 @@
             var r = cell.getAttribute('data-row');
             var c = cell.getAttribute('data-col');
             var cellKey = (r != null && c != null) ? r + '_' + c : '';
-            var ms = (cellKey && allSettings[cellKey]) ? allSettings[cellKey] : {};
-            updateCell(cell, cellKey, ms);
+            var slotKey = cell.getAttribute('data-settings-key') || cellKey;
+            var ms = (typeof window.glancerfSettingsForElement === 'function')
+                ? (window.glancerfSettingsForElement(cell) || {})
+                : ((cellKey && allSettings[cellKey]) ? allSettings[cellKey] : {});
+            updateCell(cell, slotKey, ms);
         });
     }
     runAll();

@@ -217,7 +217,8 @@ _MODULE_ID_RENAMES = {
 
 
 def _migrate_module_ids(config: Dict[str, Any]) -> bool:
-    """Rename legacy module ids in layout, map_overlay_layout, and gpio_assignments."""
+    """Rename legacy module ids in layout, map_overlay_layout, gpio_assignments, and
+    per-slot module ids inside stacked cells (module_settings[cell_key]["slots"])."""
     migrated = False
     id_map = _MODULE_ID_RENAMES
 
@@ -279,6 +280,22 @@ def _migrate_module_ids(config: Dict[str, Any]) -> bool:
                 migrated = True
             if new_val != val:
                 ga[pin] = new_val
+
+    module_settings = config.get("module_settings")
+    if isinstance(module_settings, dict):
+        for cell_ms in module_settings.values():
+            if not isinstance(cell_ms, dict):
+                continue
+            slots = cell_ms.get("slots")
+            if not isinstance(slots, list):
+                continue
+            for slot in slots:
+                if not isinstance(slot, dict):
+                    continue
+                mid = slot.get("module_id")
+                if isinstance(mid, str) and mid.strip() in id_map:
+                    slot["module_id"] = id_map[mid.strip()]
+                    migrated = True
 
     return migrated
 

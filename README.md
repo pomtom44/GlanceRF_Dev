@@ -44,9 +44,9 @@ More screenshots on the **[website](https://glancerf.zl4st.com)**.
 | Method | Description |
 |--------|-------------|
 | **1. Core installer** | Download from [glancerf.zl4st.com/installers/](https://glancerf.zl4st.com/installers/) — `GlanceRF-Install-Windows.exe`, `GlanceRF-install-Linux.sh`, or `GlanceRF-install-Mac.sh`. Runs the full installer. |
-| **2. GitHub + installer** | Download the [GitHub ZIP](https://github.com/pomtom44/GlanceRF/archive/refs/heads/main.zip), extract, then run the installer from `Project/installers`. |
-| **3. Docker** | `docker run -p 8080:8080 pomtom44/glancerf` — see **[Docker](docs/05.Docker.md)** and repo **[DOCKER.md](../DOCKER.md)** for options. |
-| **4. Manual** | Clone or download from GitHub, then `pip install -r requirements/requirements-linux.txt` (Linux), `requirements-mac.txt` (macOS), or `requirements-windows.txt` / `requirements-windows-desktop.txt` (Windows) and `python run.py` from the `Project` folder. |
+| **2. GitHub + installer** | Download the [GitHub ZIP](https://github.com/pomtom44/GlanceRF_Dev/archive/refs/heads/main.zip), extract, then run the installer from `installers`. |
+| **3. Docker** | `docker run -p 8080:8080 pomtom44/glancerf` — see **[Docker](docs/05.Docker.md)** for options. |
+| **4. Manual** | Clone or download from GitHub, then `pip install -r requirements/requirements-linux.txt` (Linux), `requirements-mac.txt` (macOS), or `requirements-windows.txt` / `requirements-windows-desktop.txt` (Windows) and `python run.py` from the project root. |
 
 Details: **[Installation](docs/01.Installation.md)**.
 
@@ -95,7 +95,7 @@ Set via `desktop_mode` in config or the installers.
 
 ## Feature requests & bugs
 
-See **[Feature requests](docs/11.FeatureRequests.md)** for the list. Open an **[Issue](https://github.com/pomtom44/GlanceRF/issues)** on GitHub. No GitHub account? Email **GlanceRF@zl4st.com**.
+See **[Feature requests](docs/11.FeatureRequests.md)** for the list. Open an **[Issue](https://github.com/pomtom44/GlanceRF_Dev/issues)** on GitHub. No GitHub account? Email **GlanceRF@zl4st.com**.
 
 ---
 

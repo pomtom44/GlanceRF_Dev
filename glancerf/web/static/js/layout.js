@@ -1723,6 +1723,9 @@ var currentDesktopWidth = 0;
                 var tourPanelAnchorEl = null;
                 var tourPanelPlacementOrder = null;
                 var tourModulePickRestrictCleanup = null;
+                // Set by the Back button so the step it lands on doesn't immediately
+                // auto-advance past itself because the earlier pick is still in place.
+                var suppressAutoAdvanceOnce = false;
 
                 function detachTourResizeObserver() {
                     if (tourResizeObserver) {
@@ -2385,6 +2388,8 @@ var currentDesktopWidth = 0;
                 }
 
                 function applyStep() {
+                    var skipAutoAdvance = suppressAutoAdvanceOnce;
+                    suppressAutoAdvanceOnce = false;
                     clearHighlight();
                     detachTourResizeObserver();
                     clearTourAnchorCellMarks();
@@ -2448,7 +2453,7 @@ var currentDesktopWidth = 0;
                     applyTourInteractionLocks(step);
                     applyTourModulePickRestrictions(step);
 
-                    if (step.interactivePick && cell) {
+                    if (step.interactivePick && cell && !skipAutoAdvance) {
                         var rowsAuto = cell.querySelectorAll('.cell-module-slot-row');
                         var selAuto = rowsAuto[step.interactivePick.slot] && rowsAuto[step.interactivePick.slot].querySelector('.cell-slot-module-select');
                         if (selAuto && selAuto.value === step.interactivePick.moduleId) {
@@ -2462,7 +2467,7 @@ var currentDesktopWidth = 0;
                             }, 0);
                         }
                     }
-                    if (step.interactiveMode === 'tour-clock-show-date') {
+                    if (step.interactiveMode === 'tour-clock-show-date' && !skipAutoAdvance) {
                         var bodySd = document.getElementById('layout-cell-settings-modal-body');
                         var selSd = bodySd ? bodySd.querySelector('select[name$="__show_date"]') : null;
                         if (selSd && selSd.value === '1' && /__slot_0__show_date$/.test(selSd.name || '')) {
@@ -2514,6 +2519,7 @@ var currentDesktopWidth = 0;
                 btnBack.addEventListener('click', function() {
                     if (stepIndex >= 6 && stepIndex < 9 && stepIndex > 0) {
                         stepIndex -= 1;
+                        suppressAutoAdvanceOnce = true;
                         applyStep();
                     }
                 });

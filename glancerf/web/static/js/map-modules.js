@@ -256,6 +256,25 @@
     return list;
   }
 
+  /**
+   * MODULE_SETTINGS_BY_CELL is keyed by position ("map_overlay_N"), but removing or
+   * clearing a row shifts every later row's module up one index. Without this, a row
+   * that shifts from index 2 to index 1 would pick up whatever was at index 1 before
+   * (the just-removed row's settings) instead of its own.
+   */
+  function reindexModuleSettingsAfterRemoval(removedIndex, newLength) {
+    for (var i = removedIndex; i < newLength; i++) {
+      var fromKey = 'map_overlay_' + (i + 1);
+      var toKey = 'map_overlay_' + i;
+      if (Object.prototype.hasOwnProperty.call(MODULE_SETTINGS_BY_CELL, fromKey)) {
+        MODULE_SETTINGS_BY_CELL[toKey] = MODULE_SETTINGS_BY_CELL[fromKey];
+      } else {
+        delete MODULE_SETTINGS_BY_CELL[toKey];
+      }
+    }
+    delete MODULE_SETTINGS_BY_CELL['map_overlay_' + newLength];
+  }
+
   function rebuildGrid(modulesList) {
     var rows = modulesList.concat(['']);
     var html = '';
@@ -278,7 +297,10 @@
 
         var modules = getModulesFromGrid();
         var isLast = idx === grid.querySelectorAll('.map-module-cell').length - 1;
-        if ((isLast && val) || (!isLast && !val)) {
+        if (!isLast && !val) {
+          reindexModuleSettingsAfterRemoval(idx, modules.length);
+          rebuildGrid(modules);
+        } else if (isLast && val) {
           rebuildGrid(modules);
         }
       });
@@ -290,6 +312,7 @@
         var modules = getModulesFromGrid();
         if (idx < modules.length) {
           modules.splice(idx, 1);
+          reindexModuleSettingsAfterRemoval(idx, modules.length);
           rebuildGrid(modules);
         }
       });

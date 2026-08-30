@@ -267,6 +267,7 @@
     }
     function updateCell(cell) {
         var settings = getCellSettings(cell);
+        if (typeof window.glancerfBackgroundUpdatesAllowed === 'function' && !window.glancerfBackgroundUpdatesAllowed(cell, settings)) return;
         var callsignOrGrid = (settings.callsign_or_grid || '').toString().trim();
         if (!callsignOrGrid) {
             showEmpty(cell, 'Set callsign or grid in config');
@@ -313,4 +314,5 @@
     }
     runAll();
     setInterval(runAll, REFRESH_MS);
+    window.addEventListener('glancerf_stack_slot_change', runAll);
 })();

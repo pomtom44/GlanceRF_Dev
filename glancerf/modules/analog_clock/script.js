@@ -4,12 +4,16 @@
     }
     function updateAnalogClocks() {
         var allSettings = window.GLANCERF_MODULE_SETTINGS || {};
-        var cells = document.querySelectorAll('.grid-cell-analog_clock, .grid-cell-analog-clock');
+        var cells = document.querySelectorAll('.grid-cell-analog_clock');
         cells.forEach(function(cell) {
-            var r = cell.getAttribute('data-row');
-            var c = cell.getAttribute('data-col');
-            var cellKey = (r != null && c != null) ? r + '_' + c : '';
-            var ms = (cellKey && allSettings[cellKey]) ? allSettings[cellKey] : {};
+            var ms = (typeof window.glancerfSettingsForElement === 'function')
+                ? (window.glancerfSettingsForElement(cell) || {})
+                : (function() {
+                    var r = cell.getAttribute('data-row');
+                    var c = cell.getAttribute('data-col');
+                    var cellKey = (r != null && c != null) ? r + '_' + c : '';
+                    return (cellKey && allSettings[cellKey]) ? allSettings[cellKey] : {};
+                })();
             var showSeconds = ms.show_seconds !== undefined ? isOn(ms.show_seconds) : true;
             var tz = (ms.timezone || 'local').toLowerCase();
             var now = new Date();

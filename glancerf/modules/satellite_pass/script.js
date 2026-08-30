@@ -1,6 +1,4 @@
 (function() {
-    var passListCountdownTimerId = null;
-
     function getMapApiBase() {
         var el = document.querySelector('[data-glancerf-base]');
         if (el && el.getAttribute('data-glancerf-base')) return el.getAttribute('data-glancerf-base').replace(/\/$/, '');
@@ -105,22 +103,20 @@
         }
         if (bodyEl) bodyEl.style.display = 'flex';
         if (primaryEl) primaryEl.textContent = next ? (next.utc || '') : (passes[0] && passes[0].utc) || '';
-        if (passListCountdownTimerId !== null) {
-            clearInterval(passListCountdownTimerId);
-            passListCountdownTimerId = null;
+        if (cell._satPassCountdownTimerId != null) {
+            clearInterval(cell._satPassCountdownTimerId);
+            cell._satPassCountdownTimerId = null;
         }
         if (countdownEl) {
             var nextUtc = next && next.utc ? next.utc : '';
             countdownEl.textContent = nextUtc ? formatCountdown(nextUtc) : '';
             if (nextUtc) {
-                passListCountdownTimerId = setInterval(function() {
-                    var el = document.querySelector('.grid-cell-satellite_pass .sat_pass_countdown');
-                    if (!el) return;
+                cell._satPassCountdownTimerId = setInterval(function() {
                     var text = formatCountdown(nextUtc);
-                    el.textContent = text;
-                    if (!text && passListCountdownTimerId !== null) {
-                        clearInterval(passListCountdownTimerId);
-                        passListCountdownTimerId = null;
+                    countdownEl.textContent = text;
+                    if (!text && cell._satPassCountdownTimerId != null) {
+                        clearInterval(cell._satPassCountdownTimerId);
+                        cell._satPassCountdownTimerId = null;
                     }
                 }, 1000);
             }
@@ -147,10 +143,9 @@
         }
     }
 
-    function fetchNextPass() {
-        var cell = document.querySelector('.grid-cell-satellite_pass');
-        if (!cell) return;
+    function fetchNextPassForCell(cell) {
         var cellSettings = getCellSettings(cell);
+        if (typeof window.glancerfBackgroundUpdatesAllowed === 'function' && !window.glancerfBackgroundUpdatesAllowed(cell, cellSettings)) return;
         var view = (cellSettings.sat_view || 'pass').toLowerCase();
         var isPass = (view !== 'list');
 
@@ -159,9 +154,9 @@
         if (viewPass) viewPass.style.display = isPass ? 'flex' : 'none';
         if (viewList) viewList.style.display = isPass ? 'none' : 'flex';
 
-        if (!isPass && passListCountdownTimerId !== null) {
-            clearInterval(passListCountdownTimerId);
-            passListCountdownTimerId = null;
+        if (!isPass && cell._satPassCountdownTimerId != null) {
+            clearInterval(cell._satPassCountdownTimerId);
+            cell._satPassCountdownTimerId = null;
         }
 
         if (isPass) {
@@ -200,11 +195,18 @@
         });
     }
 
+    function fetchNextPass() {
+        document.querySelectorAll('.grid-cell-satellite_pass').forEach(function(cell) {
+            fetchNextPassForCell(cell);
+        });
+    }
+
     function scheduleRefresh() {
         var cell = document.querySelector('.grid-cell-satellite_pass');
         if (!cell) return;
         fetchNextPass();
         setInterval(fetchNextPass, 60000);
+        window.addEventListener('glancerf_stack_slot_change', fetchNextPass);
     }
 
     if (document.readyState === 'loading') {

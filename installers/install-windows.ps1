@@ -24,7 +24,7 @@ if (-not $ProjectPath -or -not (Test-Path (Join-Path $ProjectPath "run.py"))) {
     $ProjectPath = (Get-Location).Path
 }
 if (-not (Test-Path (Join-Path $ProjectPath "run.py"))) {
-    Exit-WithError "Error: run.py not found. Run this script from the Project folder or from Project\installers."
+    Exit-WithError "Error: run.py not found. Run this script from the GlanceRF folder or from GlanceRF\installers."
 }
 
 $PythonInstallVersion = "3.12.7"
@@ -146,7 +146,25 @@ if ($needPythonDownload) {
     }
 }
 
-# --- 2. Install requirements ---
+# --- 2. Create virtual environment ---
+$PyExePath = if ($PythonCmd -eq "py -3") { (py -3 -c "import sys; print(sys.executable)" 2>$null).Trim() } else { (& $PythonCmd -c "import sys; print(sys.executable)" 2>$null).Trim() }
+$VenvDir = Join-Path $ProjectPath ".venv"
+$VenvPython = Join-Path $VenvDir "Scripts\python.exe"
+$VenvPythonw = Join-Path $VenvDir "Scripts\pythonw.exe"
+
+if ((Test-Path $VenvDir) -and -not (Test-Path $VenvPython)) {
+    Write-Host "Removing broken virtual environment; will recreate."
+    Remove-Item -Recurse -Force $VenvDir -ErrorAction SilentlyContinue
+}
+if (-not (Test-Path $VenvPython)) {
+    Write-Host "Creating virtual environment..."
+    & $PyExePath -m venv $VenvDir
+    if (-not (Test-Path $VenvPython)) { Exit-WithError "Failed to create virtual environment." }
+}
+if (-not (Test-Path $VenvPythonw)) { $VenvPythonw = $VenvPython }
+Write-Host "Virtual environment OK."
+
+# --- 3. Install requirements ---
 $reqPath = $null
 if ($desktopMode -eq "desktop") {
     $reqPath = Join-Path $ProjectPath "requirements\requirements-windows-desktop.txt"
@@ -161,48 +179,52 @@ if (-not (Test-Path $reqPath)) {
 }
 
 Write-Host "Installing requirements..."
-if ($PythonCmd -eq "py -3") { & py -3 -m pip install -r $reqPath -q 2>&1 | Out-Null }
-else { & $PythonCmd -m pip install -r $reqPath -q 2>&1 | Out-Null }
+& $VenvPython -m pip install -r $reqPath -q 2>&1 | Out-Null
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Retrying with full output..."
-    if ($PythonCmd -eq "py -3") { & py -3 -m pip install -r $reqPath }
-    else { & $PythonCmd -m pip install -r $reqPath }
+    & $VenvPython -m pip install -r $reqPath
     if ($LASTEXITCODE -ne 0) { Exit-WithError "Failed to install requirements." }
 }
 Write-Host "Requirements OK."
 
-# Headless: install pywin32 for service
-if ($desktopMode -eq "headless") {
-    Write-Host "Installing pywin32 for Windows service..."
-    if ($PythonCmd -eq "py -3") { & py -3 -m pip install pywin32 -q 2>&1 | Out-Null }
-    else { & $PythonCmd -m pip install pywin32 -q 2>&1 | Out-Null }
-}
-
-# --- 3. Update config ---
+# --- 4. Update config ---
 $configPath = Join-Path $ProjectPath "glancerf_config.json"
 $env:GLANCERF_CONFIG_PATH = $configPath
 $env:GLANCERF_DESKTOP_MODE = $desktopMode
-$configScript = "import json, os; p=os.environ.get('GLANCERF_CONFIG_PATH',''); c=json.load(open(p,'r',encoding='utf-8')) if os.path.exists(p) else {}; c['desktop_mode']=os.environ.get('GLANCERF_DESKTOP_MODE','browser'); json.dump(c, open(p,'w',encoding='utf-8'), indent=2)"
-if ($PythonCmd -eq "py -3") { & py -3 -c $configScript } else { & $PythonCmd -c $configScript }
+# Detect GPU state when desktop mode: Sandbox / software rendering -> disable_gpu for faster startup
+$disableGpu = "false"
+if ($desktopMode -eq "desktop") {
+    try {
+        $env:PYTHONPATH = $ProjectPath
+        $detectOut = & $VenvPython -c "from glancerf.desktop.gpu_detect import should_disable_gpu; print('true' if should_disable_gpu() else 'false')" 2>$null
+        if ($detectOut -match "true") { $disableGpu = "true" }
+    } catch {}
+}
+$env:GLANCERF_DISABLE_GPU_DETECTED = $disableGpu
+$configScript = "import json, os; p=os.environ.get('GLANCERF_CONFIG_PATH',''); c=json.load(open(p,'r',encoding='utf-8')) if os.path.exists(p) else {}; c['desktop_mode']=os.environ.get('GLANCERF_DESKTOP_MODE','browser'); c['disable_gpu']=(os.environ.get('GLANCERF_DISABLE_GPU_DETECTED','false').lower()=='true'); json.dump(c, open(p,'w',encoding='utf-8'), indent=2)"
+& $VenvPython -c $configScript
 Write-Host "Config set to $desktopMode."
 
-# --- 4. Create shortcut ---
+# Port may have been customized (e.g. via a manually-edited config from a prior install);
+# read it once here so the shortcut and the final "open this URL" message always agree.
+$Port = 8080
+if (Test-Path $configPath) {
+    try {
+        $cfg = Get-Content $configPath -Raw | ConvertFrom-Json
+        if ($cfg.port) { $Port = $cfg.port }
+    } catch { }
+}
+
+# --- 5. Create shortcut ---
 if ($WantShortcut) {
     try {
         $desktop = [Environment]::GetFolderPath("Desktop")
         if ($desktopMode -eq "headless") {
             # Service mode: create URL shortcut to web page (not Python)
-            $port = 8080
-            if (Test-Path $configPath) {
-                try {
-                    $cfg = Get-Content $configPath -Raw | ConvertFrom-Json
-                    if ($cfg.port) { $port = $cfg.port }
-                } catch { }
-            }
             $urlPath = Join-Path $desktop "GlanceRF.url"
             $urlContent = @"
 [InternetShortcut]
-URL=http://localhost:$port
+URL=http://localhost:$Port
 "@
             $logoIco = Join-Path $ProjectPath "logos\logo.ico"
             if (Test-Path $logoIco) {
@@ -212,11 +234,10 @@ URL=http://localhost:$port
             Write-Host "Shortcut created: GlanceRF.url (opens web page)"
         } else {
             # Desktop/browser mode: create .lnk to python run.py
-            $pythonExe = if ($PythonCmd -eq "py -3") { (py -3 -c "import sys; print(sys.executable)" 2>$null).Trim() } else { (& $PythonCmd -c "import sys; print(sys.executable)" 2>$null).Trim() }
             $lnkPath = Join-Path $desktop "GlanceRF.lnk"
             $ws = New-Object -ComObject WScript.Shell
             $sc = $ws.CreateShortcut($lnkPath)
-            $sc.TargetPath = $pythonExe
+            $sc.TargetPath = $VenvPython
             $sc.Arguments = "run.py"
             $sc.WorkingDirectory = $ProjectPath
             $sc.Description = "GlanceRF dashboard"
@@ -230,14 +251,13 @@ URL=http://localhost:$port
     } catch { Write-Host "Could not create shortcut: $_" }
 }
 
-# --- 5. Service (headless) or startup task (desktop/browser) ---
+# --- 6. Service (headless) or startup task (desktop/browser) ---
 $serviceInstallOk = $false
 if ($desktopMode -eq "headless") {
     Set-Location $ProjectPath
     Write-Host "Installing GlanceRF as Windows service (requires Administrator)..."
     try {
-        if ($PythonCmd -eq "py -3") { & py -3 -m glancerf.desktop.glancerf_service install 2>&1 | Out-Null }
-        else { & $PythonCmd -m glancerf.desktop.glancerf_service install 2>&1 | Out-Null }
+        & $VenvPython -m glancerf.desktop.glancerf_service install 2>&1 | Out-Null
         if ($LASTEXITCODE -eq 0) {
             $serviceInstallOk = $true
             & sc.exe config GlanceRF start= auto 2>$null
@@ -250,13 +270,10 @@ if ($desktopMode -eq "headless") {
     if ($serviceInstallOk) {
         Start-Process -FilePath "net" -ArgumentList "start", "GlanceRF" -Verb RunAs -Wait -ErrorAction SilentlyContinue
         try {
-            $pyExePath = if ($PythonCmd -eq "py -3") { (py -3 -c "import sys; print(sys.executable)" 2>$null).Trim() } else { (& $PythonCmd -c "import sys; print(sys.executable)" 2>$null).Trim() }
-            $pythonwPath = $pyExePath -replace "python\.exe$", "pythonw.exe"
-            if (-not (Test-Path $pythonwPath)) { $pythonwPath = $pyExePath }
             $startupFolder = [Environment]::GetFolderPath("Startup")
             $ws = New-Object -ComObject WScript.Shell
             $sc = $ws.CreateShortcut((Join-Path $startupFolder "GlanceRF Tray.lnk"))
-            $sc.TargetPath = $pythonwPath
+            $sc.TargetPath = $VenvPythonw
             $sc.Arguments = "-m glancerf.desktop.tray_helper"
             $sc.WorkingDirectory = $ProjectPath
             $sc.Description = "GlanceRF tray icon"
@@ -264,21 +281,20 @@ if ($desktopMode -eq "headless") {
             if (Test-Path $logoIco) { $sc.IconLocation = "$logoIco,0" }
             $sc.Save()
             [System.Runtime.Interopservices.Marshal]::ReleaseComObject($ws) | Out-Null
-            Start-Process -FilePath $pythonwPath -ArgumentList "-m glancerf.desktop.tray_helper" -WorkingDirectory $ProjectPath -WindowStyle Hidden
+            Start-Process -FilePath $VenvPythonw -ArgumentList "-m glancerf.desktop.tray_helper" -WorkingDirectory $ProjectPath -WindowStyle Hidden
             Write-Host "Tray icon added to Startup and started."
         } catch { }
         Write-Host ""
-        Write-Host "GlanceRF is running as a service. Open http://localhost:8080 in your browser."
+        Write-Host "GlanceRF is running as a service. Open http://localhost:$Port in your browser."
     } else {
         Write-Host "Starting GlanceRF in this window..."
-        if ($PythonCmd -eq "py -3") { & py -3 run.py } else { & $PythonCmd run.py }
+        & $VenvPython run.py
     }
 } else {
     $startupTaskCreated = $false
     if ($WantStartup) {
         try {
-            $pyExePath = if ($PythonCmd -eq "py -3") { (py -3 -c "import sys; print(sys.executable)" 2>$null).Trim() } else { (& $PythonCmd -c "import sys; print(sys.executable)" 2>$null).Trim() }
-            $Action = New-ScheduledTaskAction -Execute $pyExePath -Argument "run.py" -WorkingDirectory $ProjectPath
+            $Action = New-ScheduledTaskAction -Execute $VenvPython -Argument "run.py" -WorkingDirectory $ProjectPath
             $Trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
             $Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
             $Principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive
@@ -293,5 +309,5 @@ if ($desktopMode -eq "headless") {
     if ($WantStartup -and $startupTaskCreated) {
         try { Start-ScheduledTask -TaskName "GlanceRF" -ErrorAction Stop } catch { }
     }
-    if ($PythonCmd -eq "py -3") { & py -3 run.py } else { & $PythonCmd run.py }
+    & $VenvPython run.py
 }

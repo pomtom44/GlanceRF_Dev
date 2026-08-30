@@ -2,18 +2,27 @@
 SOTA spots and alerts cache. Fetches from api-db2.sota.org.uk, stores in SQLite
 under config_dir/cache/sota.db. Purges records older than cache_history_hours
 (from SOTA module settings). Started on app startup.
+
+Not built on the shared SpotCacheService in ota_cache_common.py - SOTA fetches
+two endpoints (spots + alerts) into two tables with different purge/filter rules,
+which doesn't fit that single-table engine. Reuses only its generic helpers
+(db path, settings lookup, JSON fetch); POTA and WWFF use SpotCacheService directly.
 """
 
 import json
 import sqlite3
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
-import httpx
-
-from glancerf.config import get_config, get_logger
+from glancerf.config import get_logger
+from glancerf.services.ota_cache_common import (
+    fetch_json as _shared_fetch_json,
+    get_cache_db_path,
+    get_ota_programs_settings_value,
+)
 
 _log = get_logger("sota_cache")
 
@@ -22,9 +31,7 @@ _ALERTS_URL = "https://api-db2.sota.org.uk/api/alerts"
 _SPOTS_COUNT = 500
 _ALERTS_COUNT = 100
 _FETCH_INTERVAL_SEC = 120
-_RECONNECT_DELAY = 60
 _DB_FILENAME = "sota.db"
-_CACHE_DIR = "cache"
 _DEFAULT_CACHE_HOURS = 24
 _MIN_CACHE_HOURS = 1
 _MAX_CACHE_HOURS = 720  # 30 days
@@ -32,54 +39,21 @@ _TIMEOUT = 30.0
 
 
 def _get_cache_db_path() -> Path:
-    config = get_config()
-    cache_dir = config.config_dir / _CACHE_DIR
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    return cache_dir / _DB_FILENAME
+    return get_cache_db_path(_DB_FILENAME)
 
 
 def _get_sota_settings_value(key: str, default: float) -> float:
     """Get max value for key across all ota_programs cells."""
-    config = get_config()
-    layout = config.get("layout") or []
-    if not isinstance(layout, list):
-        return default
-    map_overlay = config.get("map_overlay_layout") or []
-    if not isinstance(map_overlay, list):
-        map_overlay = []
-    module_settings = config.get("module_settings") or {}
-    if not isinstance(module_settings, dict):
-        module_settings = {}
-    max_val = default
-    cells_to_check = []
-    for row_idx, row in enumerate(layout):
-        if not isinstance(row, list):
-            continue
-        for col_idx, cell_value in enumerate(row):
-            if isinstance(cell_value, str) and cell_value.strip() == "ota_programs":
-                cells_to_check.append((f"{row_idx}_{col_idx}", "ota_programs"))
-    for i, mid in enumerate(map_overlay):
-        if isinstance(mid, str) and mid.strip() == "ota_programs":
-            cells_to_check.append((f"map_overlay_{i}", "ota_programs"))
-    for cell_key, _ in cells_to_check:
-        settings = module_settings.get(cell_key)
-        if not isinstance(settings, dict):
-            continue
-        val = settings.get(key)
-        if val is None or val == "":
-            continue
-        try:
-            h = float(val) if isinstance(val, (int, float)) else float(val)
-            h = max(_MIN_CACHE_HOURS, min(_MAX_CACHE_HOURS, h))
-            max_val = max(max_val, h)
-        except (TypeError, ValueError):
-            pass
-    return max_val
+    return get_ota_programs_settings_value(key, default, _MIN_CACHE_HOURS, _MAX_CACHE_HOURS)
 
 
 def _get_cache_history_hours() -> float:
     """Get cache history (hours past) from SOTA module settings."""
     return _get_sota_settings_value("cache_hours_past", _DEFAULT_CACHE_HOURS)
+
+
+def _fetch_json(url: str) -> list[dict[str, Any]]:
+    return _shared_fetch_json(url, _TIMEOUT, _log)
 
 
 def _create_db(conn: sqlite3.Connection) -> None:
@@ -127,17 +101,6 @@ def _purge_old_records(conn: sqlite3.Connection) -> None:
         _log.debug("SOTA cache purge error: %s", e)
 
 
-def _fetch_json(url: str, params: Optional[dict] = None) -> list[dict[str, Any]]:
-    try:
-        with httpx.Client(timeout=_TIMEOUT, follow_redirects=True) as client:
-            r = client.get(url, params=params)
-        if 200 <= r.status_code < 400:
-            return r.json() if r.content else []
-    except Exception as e:
-        _log.debug("SOTA fetch %s failed: %s", url, e)
-    return []
-
-
 def _run_sota_cache_thread() -> None:
     db_path = _get_cache_db_path()
     conn = None
@@ -157,7 +120,6 @@ def _run_sota_cache_thread() -> None:
                     ts = s.get("timeStamp")
                     if ts:
                         try:
-                            from datetime import datetime
                             dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
                             received_at = dt.timestamp()
                         except Exception:
@@ -184,7 +146,6 @@ def _run_sota_cache_thread() -> None:
                     ts = a.get("timeStamp")
                     if ts:
                         try:
-                            from datetime import datetime
                             dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
                             received_at = dt.timestamp()
                         except Exception:
@@ -195,7 +156,6 @@ def _run_sota_cache_thread() -> None:
                     date_activated = None
                     if date_act:
                         try:
-                            from datetime import datetime
                             dt = datetime.fromisoformat(date_act.replace("Z", "+00:00"))
                             date_activated = dt.timestamp()
                         except Exception:
@@ -251,8 +211,7 @@ def get_cached_spots(
     callsign_filter: Optional[str] = None,
 ) -> list[dict[str, Any]]:
     """Read spots from local cache. hours_past: optional override; callsign_filter: optional substring match (case-insensitive)."""
-    config = get_config()
-    db_path = config.config_dir / _CACHE_DIR / _DB_FILENAME
+    db_path = _get_cache_db_path()
     if not db_path.is_file():
         return []
     cutoff_hours = hours_past if hours_past is not None else _get_cache_history_hours()
@@ -289,8 +248,7 @@ def get_cached_alerts(
     callsign_filter: Optional[str] = None,
 ) -> list[dict[str, Any]]:
     """Read alerts from local cache. Filter by dateActivated in [now-hours_past, now+hours_future]."""
-    config = get_config()
-    db_path = config.config_dir / _CACHE_DIR / _DB_FILENAME
+    db_path = _get_cache_db_path()
     if not db_path.is_file():
         return []
     hp = hours_past if hours_past is not None else _get_cache_history_hours()

@@ -5,6 +5,7 @@ Used to enrich SOTA spots and alerts with coordinates for map display.
 """
 
 import csv
+import itertools
 import threading
 import time
 from pathlib import Path
@@ -53,11 +54,17 @@ def _load_from_file(path: Path) -> dict[str, tuple[float, float]]:
     result: dict[str, tuple[float, float]] = {}
     try:
         with path.open("r", encoding="utf-8", errors="replace") as f:
-            # First line may be title "SOTA Summits List (Date=...)", second is header
+            # First line may be title "SOTA Summits List (Date=...)", second is header -
+            # or the file may have no title line, with the header on line 1 directly.
+            # Peek at line 1: if it's already the header, feed it back to the reader
+            # instead of discarding it (discarding it unconditionally previously made
+            # DictReader treat the first *data* row as the header, silently
+            # yielding zero summits whenever no title line was present).
             first = f.readline()
-            if first and "SummitCode" not in first:
-                pass  # consumed title line; next line is header
-            reader = csv.DictReader(f)
+            if first and "SummitCode" in first:
+                reader = csv.DictReader(itertools.chain([first], f))
+            else:
+                reader = csv.DictReader(f)
             if not reader.fieldnames:
                 return result
             for row in reader:

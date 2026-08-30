@@ -168,50 +168,90 @@
     }
   }
 
-  /**
-   * When the visible slot in a stacked cell changes, module UIs (maps, scaled text, etc.)
-   * often need a fresh layout: ResizeObserver may not fire if the cell size did not change,
-   * and Leaflet needs invalidateSize() when a map was in an opacity-0 layer.
-   */
-  function notifyStackSlotChange(stack) {
-    try {
-      window.dispatchEvent(new CustomEvent('glancerf_stack_slot_change', { detail: { stack: stack } }));
-    } catch (e) {}
-    window.dispatchEvent(new Event('resize'));
-    requestAnimationFrame(function () {
-      window.dispatchEvent(new Event('resize'));
-      requestAnimationFrame(function () {
-        window.dispatchEvent(new Event('resize'));
-      });
-    });
-    setTimeout(function () { window.dispatchEvent(new Event('resize')); }, 0);
-    setTimeout(function () { window.dispatchEvent(new Event('resize')); }, 80);
-    setTimeout(function () { window.dispatchEvent(new Event('resize')); }, 350);
+  /* DOM morphing for the browser side of desktop<->browser mirroring.
+     Patches the live document in place to match an incoming HTML snapshot, instead of
+     document.open()/write()/close() (full document replace). That approach re-parsed and
+     re-executed every <script> tag on every 'dom' message - since sendState() resends
+     whenever outerHTML differs at all, any per-second-updating module (clock, countdown)
+     meant every mirrored browser tab accumulated a brand new setInterval from each
+     module's script on every tick, forever, without ever clearing the previous one:
+     confirmed via test that after 3 resyncs a clock module had 3 concurrent intervals
+     running instead of 1. Morphing preserves existing nodes/listeners/intervals and never
+     touches <script> element content, so scripts execute exactly once (on first load). */
+  function morphAttributes(oldEl, newEl) {
+    var oldAttrs = oldEl.attributes;
+    var newAttrs = newEl.attributes;
+    for (var i = oldAttrs.length - 1; i >= 0; i--) {
+      var name = oldAttrs[i].name;
+      if (!newEl.hasAttribute(name)) oldEl.removeAttribute(name);
+    }
+    for (var j = 0; j < newAttrs.length; j++) {
+      var attr = newAttrs[j];
+      if (oldEl.getAttribute(attr.name) !== attr.value) {
+        oldEl.setAttribute(attr.name, attr.value);
+      }
+    }
   }
 
-  function initCellStackRotators() {
-    document.querySelectorAll('.grid-cell-stack').forEach(function (stack) {
-      var sec = parseFloat(stack.getAttribute('data-rotate-seconds'));
-      if (isNaN(sec) || sec < 5) sec = 30;
-      var slots = stack.querySelectorAll('.glancerf-cell-slot');
-      if (slots.length <= 1) return;
-      var idx = 0;
-      setInterval(function () {
-        idx = (idx + 1) % slots.length;
-        for (var i = 0; i < slots.length; i++) {
-          slots[i].classList.toggle('glancerf-cell-slot-active', i === idx);
-        }
-        notifyStackSlotChange(stack);
-      }, sec * 1000);
-    });
+  function isScriptTag(node) {
+    return !!node && node.nodeType === 1 && node.tagName === 'SCRIPT';
   }
 
-  document.addEventListener('DOMContentLoaded', function () {
-    var container = document.getElementById('aspect-container');
-    var grid = container && container.querySelector('.grid-layout');
-    if (grid) grid.style.minHeight = '100%';
-    initCellStackRotators();
-  });
+  function morphChildren(oldParent, newParent) {
+    var oldChildren = Array.prototype.slice.call(oldParent.childNodes);
+    var newChildren = Array.prototype.slice.call(newParent.childNodes);
+    var max = Math.max(oldChildren.length, newChildren.length);
+    for (var i = 0; i < max; i++) {
+      var oldChild = oldChildren[i];
+      var newChild = newChildren[i];
+      if (!oldChild && newChild) {
+        // Never insert a brand-new <script> element - dynamically appended scripts
+        // execute per spec, and a 'dom' sync should never legitimately carry new script
+        // content anyway (only the initial page load should ever introduce scripts).
+        if (isScriptTag(newChild)) continue;
+        oldParent.appendChild(document.importNode(newChild, true));
+      } else if (oldChild && !newChild) {
+        oldParent.removeChild(oldChild);
+      } else if (oldChild && newChild) {
+        morphNode(oldChild, newChild, oldParent);
+      }
+    }
+  }
+
+  function morphNode(oldNode, newNode, parent) {
+    if (oldNode.nodeType !== newNode.nodeType ||
+        (oldNode.nodeType === 1 && oldNode.tagName !== newNode.tagName)) {
+      if (isScriptTag(newNode)) return; // never swap other content out for a script
+      parent.replaceChild(document.importNode(newNode, true), oldNode);
+      return;
+    }
+    if (oldNode.nodeType === 3 || oldNode.nodeType === 8) {
+      if (oldNode.nodeValue !== newNode.nodeValue) oldNode.nodeValue = newNode.nodeValue;
+      return;
+    }
+    if (oldNode.nodeType !== 1) return;
+    if (oldNode.tagName === 'SCRIPT') return; // never touch script content/attrs - already executed
+    morphAttributes(oldNode, newNode);
+    // Sync live form state that isn't reflected as an attribute (value/checked can
+    // diverge from the value="" attribute once the user or a script changes it).
+    var tag = oldNode.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
+      if (oldNode.type === 'checkbox' || oldNode.type === 'radio') {
+        if (oldNode.checked !== newNode.checked) oldNode.checked = newNode.checked;
+      } else if (oldNode.value !== newNode.value) {
+        oldNode.value = newNode.value;
+      }
+    }
+    morphChildren(oldNode, newNode);
+  }
+
+  function morphDocument(htmlString) {
+    var newDoc = new DOMParser().parseFromString(htmlString, 'text/html');
+    morphNode(document.documentElement, newDoc.documentElement, document);
+  }
+
+  // Grid rendering/rotation (stacked cells, aspect-container sizing) lives in
+  // grid-display.js, shared with readonly.js - see that file, loaded alongside this one.
 
   if (isDesktop) {
     var protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -254,9 +294,7 @@
       if (!d || !d.html) return;
       var scrollState = d.scrollState || {};
       var formState = d.formState || {};
-      document.open();
-      document.write(d.html);
-      document.close();
+      morphDocument(d.html);
       if (scrollState.x !== undefined || scrollState.y !== undefined) {
         window.scrollTo(scrollState.x || 0, scrollState.y || 0);
       }

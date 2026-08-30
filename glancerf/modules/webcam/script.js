@@ -3,9 +3,13 @@
     function getCellKey(cell) {
         var r = cell.getAttribute('data-row');
         var c = cell.getAttribute('data-col');
-        return (r != null && c != null) ? r + '_' + c : '';
+        var cellKey = (r != null && c != null) ? r + '_' + c : '';
+        return cell.getAttribute('data-settings-key') || cellKey;
     }
     function getCellSettings(cell) {
+        if (typeof window.glancerfSettingsForElement === 'function') {
+            return window.glancerfSettingsForElement(cell) || {};
+        }
         var allSettings = window.GLANCERF_MODULE_SETTINGS || {};
         var key = getCellKey(cell);
         return (key && allSettings[key]) ? allSettings[key] : {};
@@ -16,6 +20,36 @@
             s.getTracks().forEach(function(t) { t.stop(); });
         }
         activeStreams[cellKey] = null;
+    }
+    function isCellActive(cell) {
+        var wrap = cell.querySelector('.webcam_wrap');
+        return !!(wrap && wrap.classList.contains('has-feed'));
+    }
+    function isSlotActive(cell) {
+        var slot = cell.closest ? cell.closest('.glancerf-cell-slot') : null;
+        return !(slot && !slot.classList.contains('glancerf-cell-slot-active'));
+    }
+    function stopDisplayedStream(cell) {
+        var wrap = cell.querySelector('.webcam_wrap');
+        var video = cell.querySelector('.webcam_video');
+        var img = cell.querySelector('.webcam_img');
+        var placeholder = cell.querySelector('.webcam_placeholder');
+        stopStream(getCellKey(cell));
+        if (video) {
+            video.onerror = null;
+            video.onloadeddata = null;
+            video.style.display = 'none';
+            video.removeAttribute('src');
+            video.srcObject = null;
+        }
+        if (img) {
+            img.onerror = null;
+            img.onload = null;
+            img.style.display = 'none';
+            img.removeAttribute('src');
+        }
+        if (wrap) wrap.classList.remove('has-feed');
+        if (placeholder) { placeholder.style.display = ''; placeholder.textContent = 'Stopped'; }
     }
     function parseNum(val, defaultVal, minVal, maxVal) {
         var n = parseInt(val, 10);
@@ -30,6 +64,7 @@
         var img = cell.querySelector('.webcam_img');
         var placeholder = cell.querySelector('.webcam_placeholder');
         if (!wrap || !video) return;
+        cell._webcamInitialized = true;
         var cellKey = getCellKey(cell);
         stopStream(cellKey);
         var settings = getCellSettings(cell);
@@ -140,7 +175,12 @@
         cells.forEach(function(cell) {
             var key = getCellKey(cell);
             stopStream(key);
-            updateCell(cell);
+            if (isSlotActive(cell)) {
+                cell._webcamInitialized = true;
+                updateCell(cell);
+            } else {
+                cell._webcamInitialized = false;
+            }
         });
     }
     if (document.readyState === 'loading') {
@@ -153,4 +193,23 @@
         cells.forEach(function(c) { stopStream(getCellKey(c)); });
         run();
     };
+    window.addEventListener('glancerf_stack_slot_change', function () {
+        document.querySelectorAll('.grid-cell-webcam').forEach(function (cell) {
+            if (!cell._webcamInitialized && isSlotActive(cell)) {
+                cell._webcamInitialized = true;
+                updateCell(cell);
+            }
+        });
+    });
+    window.addEventListener('glancerf_gpio_input', function(e) {
+        var d = e.detail || {};
+        if (d.module_id !== 'webcam' || d.function_id !== 'start_stop') return;
+        document.querySelectorAll('.grid-cell-webcam').forEach(function(cell) {
+            if (isCellActive(cell)) {
+                stopDisplayedStream(cell);
+            } else {
+                updateCell(cell);
+            }
+        });
+    });
 })();
